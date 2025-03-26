@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"nocc/pb"
 
@@ -75,22 +74,9 @@ func runInSocks5(proxyAddr string) (grpc.DialOption, error) {
 		return nil, err
 	}
 
-	customResolver := &net.Resolver{
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return dialer.Dial(network, address)
-		},
-	}
-
 	customDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		newctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 
-		ips, err := customResolver.LookupIP(newctx, "ip4", addr)
-		if err != nil {
-			return nil, err
-		}
-
-		return dialer.Dial("tcp", ips[0].String())
+		return dialer.Dial("tcp", addr)
 	}
 
 	return grpc.WithContextDialer(customDialer), nil
