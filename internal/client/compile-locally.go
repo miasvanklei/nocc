@@ -40,8 +40,8 @@ func (localCxx *LocalCxxLaunch) RunCxxLocally() (exitCode int, stdout []byte, st
 
 // EmulateDaemonInsideThisProcessForDev is for dev purposes:
 // for development, I use `nocc-daemon g++ ...` from GoLand directly (without a C++ `nocc` wrapper).
-func EmulateDaemonInsideThisProcessForDev(remoteNoccHosts []string, cmdLine []string, localCxxQueueSize int) (exitCode int, stdout []byte, stderr []byte) {
-	daemon, err := MakeDaemon(remoteNoccHosts, false, int64(localCxxQueueSize))
+func EmulateDaemonInsideThisProcessForDev(remoteNoccHosts []string, socksProxyAddr string, cmdLine []string, localCxxQueueSize int) (exitCode int, stdout []byte, stderr []byte) {
+	daemon, err := MakeDaemon(remoteNoccHosts, socksProxyAddr, false, int64(localCxxQueueSize))
 	if err != nil {
 		panic(err)
 	}

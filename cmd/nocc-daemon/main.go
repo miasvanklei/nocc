@@ -63,6 +63,8 @@ func main() {
 		"drop-server-caches", "")
 	noccServers := common.CmdEnvString("Remote nocc servers — a list of 'host:port' delimited by ';'.\nIf not set, nocc will read NOCC_SERVERS_FILENAME.", "",
 		"", "NOCC_SERVERS")
+	socksProxyAddr := common.CmdEnvString("A socks5 proxy address for all remote connections.", "",
+		"", "NOCC_SOCKS_PROXY")
 	noccServersFilename := common.CmdEnvString("A file with nocc servers — a list of 'host:port', one per line (with optional comments starting with '#').\nUsed if NOCC_SERVERS is unset.", "",
 		"", "NOCC_SERVERS_FILENAME")
 	logFileName := common.CmdEnvString("A filename to log, nothing by default.\nErrors are duplicated to stderr always.", "",
@@ -95,7 +97,7 @@ func main() {
 		if len(remoteNoccHosts) == 0 {
 			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
 		}
-		client.RequestRemoteStatus(remoteNoccHosts)
+		client.RequestRemoteStatus(remoteNoccHosts, *socksProxyAddr)
 		os.Exit(0)
 	}
 
@@ -106,7 +108,7 @@ func main() {
 		if len(remoteNoccHosts) == 0 {
 			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
 		}
-		client.RequestRemoteDumpLogs(remoteNoccHosts, "/tmp/nocc-dump-logs")
+		client.RequestRemoteDumpLogs(remoteNoccHosts, "/tmp/nocc-dump-logs", *socksProxyAddr)
 		os.Exit(0)
 	}
 
@@ -114,7 +116,7 @@ func main() {
 		if len(remoteNoccHosts) == 0 {
 			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
 		}
-		client.RequestDropAllCaches(remoteNoccHosts)
+		client.RequestDropAllCaches(remoteNoccHosts, *socksProxyAddr)
 		os.Exit(0)
 	}
 
@@ -126,7 +128,7 @@ func main() {
 			failedStartDaemon(err)
 		}
 
-		daemon, err := client.MakeDaemon(remoteNoccHosts, *disableObjCache, *localCxxQueueSize)
+		daemon, err := client.MakeDaemon(remoteNoccHosts, *socksProxyAddr, *disableObjCache, *localCxxQueueSize)
 		if err != nil {
 			failedStartDaemon(err)
 		}
@@ -155,7 +157,7 @@ func main() {
 		failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
 	}
 
-	exitCode, stdout, stderr := client.EmulateDaemonInsideThisProcessForDev(remoteNoccHosts, os.Args[1:], 1)
+	exitCode, stdout, stderr := client.EmulateDaemonInsideThisProcessForDev(remoteNoccHosts,"", os.Args[1:], 1)
 	_, _ = os.Stdout.Write(stdout)
 	_, _ = os.Stderr.Write(stderr)
 	os.Exit(exitCode)

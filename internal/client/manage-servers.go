@@ -34,9 +34,9 @@ type rpcDropCachesRes struct {
 	processingTime time.Duration
 }
 
-func requestRemoteStatusOne(remoteHostPort string, resChannel chan rpcStatusRes) {
+func requestRemoteStatusOne(remoteHostPort string, socksProxyAddr string, resChannel chan rpcStatusRes) {
 	start := time.Now()
-	grpcClient, err := MakeGRPCClient(remoteHostPort)
+	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 	if err != nil {
 		resChannel <- rpcStatusRes{err: err, remoteHostPort: remoteHostPort}
 		return
@@ -52,9 +52,9 @@ func requestRemoteStatusOne(remoteHostPort string, resChannel chan rpcStatusRes)
 	}
 }
 
-func requestRemoteDumpLogsOne(remoteHostPort string, dumpToFolder string, resChannel chan rpcDumpLogsRes) {
+func requestRemoteDumpLogsOne(remoteHostPort string, socksProxyAddr string, dumpToFolder string, resChannel chan rpcDumpLogsRes) {
 	start := time.Now()
-	grpcClient, err := MakeGRPCClient(remoteHostPort)
+	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 	if err != nil {
 		resChannel <- rpcDumpLogsRes{err: err, remoteHostPort: remoteHostPort}
 		return
@@ -97,9 +97,9 @@ func requestRemoteDumpLogsOne(remoteHostPort string, dumpToFolder string, resCha
 	}
 }
 
-func requestDropAllCachesOne(remoteHostPort string, resChannel chan rpcDropCachesRes) {
+func requestDropAllCachesOne(remoteHostPort string, socksProxyAddr string, resChannel chan rpcDropCachesRes) {
 	start := time.Now()
-	grpcClient, err := MakeGRPCClient(remoteHostPort)
+	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 	if err != nil {
 		resChannel <- rpcDropCachesRes{err: err, remoteHostPort: remoteHostPort}
 		return
@@ -117,10 +117,10 @@ func requestDropAllCachesOne(remoteHostPort string, resChannel chan rpcDropCache
 
 // RequestRemoteStatus sends the rpc /Status request for all hosts
 // and outputs brief info about each host ending up with a grouped summary.
-func RequestRemoteStatus(remoteNoccHosts []string) {
+func RequestRemoteStatus(remoteNoccHosts []string, socksProxyAddr string,) {
 	resChannel := make(chan rpcStatusRes)
 	for _, remoteHostPort := range remoteNoccHosts {
-		go requestRemoteStatusOne(remoteHostPort, resChannel)
+		go requestRemoteStatusOne(remoteHostPort, socksProxyAddr, resChannel)
 	}
 
 	nOk := 0
@@ -207,7 +207,7 @@ func RequestRemoteStatus(remoteNoccHosts []string) {
 
 // RequestRemoteDumpLogs sends the rpc /DumpLogs request for all hosts
 // and saves all logs to dumpToFolder (inside /tmp in reality).
-func RequestRemoteDumpLogs(remoteNoccHosts []string, dumpToFolder string) {
+func RequestRemoteDumpLogs(remoteNoccHosts []string, socksProxyAddr string, dumpToFolder string) {
 	_ = os.RemoveAll(dumpToFolder)
 	if err := os.MkdirAll(dumpToFolder, os.ModePerm); err != nil {
 		logClient.Error(err)
@@ -215,7 +215,7 @@ func RequestRemoteDumpLogs(remoteNoccHosts []string, dumpToFolder string) {
 
 	resChannel := make(chan rpcDumpLogsRes)
 	for _, remoteHostPort := range remoteNoccHosts {
-		go requestRemoteDumpLogsOne(remoteHostPort, dumpToFolder, resChannel)
+		go requestRemoteDumpLogsOne(remoteHostPort, socksProxyAddr, dumpToFolder, resChannel)
 	}
 
 	nOk := 0
@@ -247,10 +247,10 @@ func RequestRemoteDumpLogs(remoteNoccHosts []string, dumpToFolder string) {
 
 // RequestDropAllCaches sends the rpc /DropAllCaches request for all hosts.
 // Used primarily for development purposes.
-func RequestDropAllCaches(remoteNoccHosts []string) {
+func RequestDropAllCaches(remoteNoccHosts []string, socksProxyAddr string) {
 	resChannel := make(chan rpcDropCachesRes)
 	for _, remoteHostPort := range remoteNoccHosts {
-		go requestDropAllCachesOne(remoteHostPort, resChannel)
+		go requestDropAllCachesOne(remoteHostPort, socksProxyAddr, resChannel)
 	}
 
 	nOk := 0

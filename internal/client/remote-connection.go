@@ -36,8 +36,8 @@ func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
 	return
 }
 
-func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, ctxWithTimeout context.Context) (*RemoteConnection, error) {
-	grpcClient, err := MakeGRPCClient(remoteHostPort)
+func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string, ctxWithTimeout context.Context) (*RemoteConnection, error) {
+	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 
 	remote := &RemoteConnection{
 		remoteHostPort:  remoteHostPort,

@@ -77,7 +77,7 @@ func detectHostUserName() string {
 	return curUser.Username
 }
 
-func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, maxLocalCxxProcesses int64) (*Daemon, error) {
+func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache bool, maxLocalCxxProcesses int64) (*Daemon, error) {
 	// send env NOCC_SERVERS on connect everywhere
 	// this is for debugging purpose: in production, all clients should have the same servers list
 	// to ensure this, just grep server logs: only one unique string should appear
@@ -106,6 +106,12 @@ func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, maxLocalCxxProce
 	}
 
 	// connect to all remotes in parallel
+	daemon.connectToRemoteHosts(remoteNoccHosts, socksProxyAddr)
+
+	return daemon, nil
+}
+
+func (daemon *Daemon) connectToRemoteHosts(remoteNoccHosts []string, socksProxyAddr string) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(remoteNoccHosts))
 
@@ -114,7 +120,7 @@ func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, maxLocalCxxProce
 
 	for index, remoteHostPort := range remoteNoccHosts {
 		go func(index int, remoteHostPort string) {
-			remote, err := MakeRemoteConnection(daemon, remoteHostPort, ctxConnect)
+			remote, err := MakeRemoteConnection(daemon, remoteHostPort, socksProxyAddr, ctxConnect)
 			if err != nil {
 				remote.isUnavailable = true
 				logClient.Error("error connecting to", remoteHostPort, err)
@@ -125,8 +131,6 @@ func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, maxLocalCxxProce
 		}(index, remoteHostPort)
 	}
 	wg.Wait()
-
-	return daemon, nil
 }
 
 func (daemon *Daemon) StartListeningUnixSocket(daemonUnixSock string) error {
