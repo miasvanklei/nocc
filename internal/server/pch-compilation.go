@@ -39,13 +39,13 @@ func (pchCompilation *PchCompilation) PrepareServerCxxCmdLine(ownPch *common.Own
 	// loop through -I {dir} / -include {file} / etc., converting client {dir} to server path
 	for i := 0; i < len(ownPch.CxxIDirs); i += 2 {
 		arg := ownPch.CxxIDirs[i]
-		serverIdir := rootDir + ownPch.CxxIDirs[i+1]
+		serverIdir := path.Join(rootDir, ownPch.CxxIDirs[i+1])
 		cxxCmdLine = append(cxxCmdLine, arg, serverIdir)
 	}
 	// append -Wall and other cxx args
 	cxxCmdLine = append(cxxCmdLine, ownPch.CxxArgs...)
 	// append output (.gch/.pch) and input (a header generated from)
-	return append(cxxCmdLine, "-o", rootDir+ownPch.OrigPchFile, rootDir+ownPch.OrigHFile)
+	return append(cxxCmdLine, "-o", path.Join(rootDir, ownPch.OrigPchFile), path.Join(rootDir, ownPch.OrigHFile))
 }
 
 // CompileOwnPchOnServer is called when a client uploads a .nocc-pch file.
