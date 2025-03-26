@@ -45,7 +45,7 @@ func CollectDependentIncludesByCxxM(includesCache *IncludesCache, cwd string, cx
 	cxxCmdLine := make([]string, 0, len(cxxArgs)+2*cxxIDirs.Count()+4)
 	cxxCmdLine = append(cxxCmdLine, cxxArgs...)
 	cxxCmdLine = append(cxxCmdLine, cxxIDirs.AsCxxArgs()...)
-	cxxCmdLine = append(cxxCmdLine, "-o", "/dev/stdout", "-M", cppInFile)
+	cxxCmdLine = append(cxxCmdLine, "-o", "-", "-M", cppInFile)
 
 	// drop "-Xclang -emit-pch", as it outputs pch regardless of -M flag
 	for i, arg := range cxxCmdLine {
@@ -177,7 +177,12 @@ func CalcSHA256OfFileName(fileName string, preallocatedBuf []byte) (common.SHA25
 // LocateOwnPchFile finds a .nocc-pch file next to .h.
 // The results are cached: if a file doesn't exist, it won't be looked up again until daemon is alive.
 func LocateOwnPchFile(hFileName string, includesCache *IncludesCache) *IncludedFile {
-	ownPchFile := hFileName + ".nocc-pch"
+	basehFileName := hFileName
+	cutHFileName, hasSuffix := strings.CutSuffix(hFileName, ".pch")
+	if hasSuffix {
+		basehFileName = cutHFileName
+	}
+	ownPchFile := basehFileName + ".nocc-pch"
 	pchCached, exists := includesCache.GetHFileInfo(ownPchFile)
 	if !exists {
 		if stat, err := os.Stat(ownPchFile); err == nil {
