@@ -3,7 +3,6 @@ package client
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -21,8 +20,9 @@ type DaemonUnixSockListener struct {
 }
 
 type DaemonSockRequest struct {
-	Cwd     string
-	CmdLine []string
+	Cwd      string
+	Compiler string
+	CmdLine  []string
 }
 
 type DaemonSockResponse struct {
@@ -80,16 +80,12 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 // onRequest parses a string-encoded message from `nocc` C++ client and calls Daemon.HandleInvocation.
 // After the request has been fully processed (.o is written), we answer back, and `nocc` client dies.
 // Request message format:
-// "{Cwd} {CmdLine...}\0"
+// "{Cwd}\b{Compiler}\b{CmdLine...}\0"
 // Response message format:
-// "{ExitCode}\0{Stdout}\0{Stderr}\0"
-// See nocc.cpp, write_request_to_go_daemon() and read_response_from_go_daemon()
+// "{ExitCode}\b{Stdout}\b{Stderr}\0"
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
-	slice, err := bufio.NewReader(conn).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 32 * 1024).ReadSlice(0)
 	if err != nil {
-		if err != io.EOF { // if launched `nocc start {cxx_name}`, and the daemon was already running — nothing is sent actually
-			logClient.Error("couldn't read from socket", err)
-		}
 		listener.respondErr(conn)
 		return
 	}
@@ -100,8 +96,9 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 		return
 	}
 	request := DaemonSockRequest{
-		Cwd:     reqParts[0],
-		CmdLine: reqParts[1:],
+		Cwd:      reqParts[0],
+		Compiler: reqParts[1],
+		CmdLine:  strings.Split(reqParts[2], " "),
 	}
 
 	atomic.AddInt32(&listener.activeConnections, 1)
@@ -113,7 +110,7 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 }
 
 func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSockResponse) {
-	_, _ = conn.Write([]byte(fmt.Sprintf("%d\000%s\000%s\000", resp.ExitCode, resp.Stdout, resp.Stderr)))
+	_, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\b\000", resp.ExitCode, resp.Stdout, resp.Stderr))
 	_ = conn.Close()
 }
 

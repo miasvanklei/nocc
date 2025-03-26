@@ -7,8 +7,12 @@ GOPATH := $(shell go env GOPATH)
 .EXPORT_ALL_VARIABLES:
 PATH := ${PATH}:${GOPATH}/bin
 
+define build_client
+	go build -o $(1)/nocc -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc/main.go
+endef
+
 define build_daemon
-	go build -o $(1)/nocc-daemon -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-daemon/main.go
+    go build -o $(1)/nocc-daemon -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-daemon/main.go
 endef
 
 define build_server
@@ -23,7 +27,7 @@ lint:
 
 client:
 	$(call build_daemon,bin)
-	g++ -std=c++11 -O3 cmd/nocc.cpp -o bin/nocc
+	$(call build_client,bin)
 
 server:
 	$(call build_server,bin)
