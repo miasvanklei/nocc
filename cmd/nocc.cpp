@@ -23,6 +23,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <fcntl.h>
 
 const char *LOCKFILE = "/tmp/nocc.lock";    // an inter-process lockfile to launch a daemon only once
 const char *UNIX_SOCK = "/tmp/nocc.sock";   // hardcoded in a daemon also
