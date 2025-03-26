@@ -11,12 +11,12 @@ import (
 	"nocc/internal/common"
 )
 
-func failedStart(err interface{}) {
+func failedStart(err any) {
 	_, _ = fmt.Fprintln(os.Stderr, "[nocc]", err)
 	os.Exit(1)
 }
 
-func failedStartDaemon(err interface{}) {
+func failedStartDaemon(err any) {
 	_, _ = fmt.Fprintln(os.Stdout, "daemon not started:", err)
 	os.Exit(1)
 }
