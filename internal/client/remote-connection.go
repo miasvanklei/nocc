@@ -93,7 +93,7 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 			Cwd:           cwd,
 			CppInFile:     invocation.cppInFile,
 			CxxName:       invocation.cxxName,
-			CxxArgs:       invocation.cxxArgs,
+			CxxArgs:       append(invocation.cxxArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.cxxName)...),
 			CxxIDirs:      append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.defIDirs.AsCxxArgs()...),
 			RequiredFiles: requiredFiles,
 		})

@@ -180,7 +180,7 @@ func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason er
 }
 
 func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
-	invocation := ParseCmdLineInvocation(daemon, req.Cwd, req.CmdLine)
+	invocation := ParseCmdLineInvocation(daemon, req.Cwd, req.Compiler, req.CmdLine)
 
 	switch invocation.invokeType {
 	default:
@@ -269,7 +269,7 @@ func (daemon *Daemon) FallbackToLocalCxx(req DaemonSockRequest, reason error) Da
 	}
 
 	daemon.localCxxThrottle <- struct{}{}
-	localCxx := LocalCxxLaunch{req.CmdLine, req.Cwd}
+	localCxx := LocalCxxLaunch{req.Cwd, req.Compiler, req.CmdLine}
 	reply.ExitCode, reply.Stdout, reply.Stderr = localCxx.RunCxxLocally()
 	<-daemon.localCxxThrottle
 

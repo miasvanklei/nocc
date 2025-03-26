@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
 )
 
@@ -15,14 +14,15 @@ import (
 // (`nocc` is typically launched with a very huge number of concurrent processes, and if network is broken,
 // this queue makes a huge bunch of `nocc` invocations to be throttled to a limited number of local cxx processes).
 type LocalCxxLaunch struct {
-	cmdLine []string
 	cwd     string
+	compiler string
+	cmdLine []string
 }
 
 func (localCxx *LocalCxxLaunch) RunCxxLocally() (exitCode int, stdout []byte, stderr []byte) {
 	logClient.Info(0, "compile locally", localCxx.cmdLine)
 
-	cxxCommand := exec.Command(localCxx.cmdLine[0], localCxx.cmdLine[1:]...)
+	cxxCommand := exec.Command(localCxx.compiler, localCxx.cmdLine...)
 	cxxCommand.Dir = localCxx.cwd
 	var cxxStdout, cxxStderr bytes.Buffer
 	cxxCommand.Stdout = &cxxStdout
@@ -36,21 +36,4 @@ func (localCxx *LocalCxxLaunch) RunCxxLocally() (exitCode int, stdout []byte, st
 		stderr = []byte(fmt.Sprintln(err))
 	}
 	return
-}
-
-// EmulateDaemonInsideThisProcessForDev is for dev purposes:
-// for development, I use `nocc-daemon g++ ...` from GoLand directly (without a C++ `nocc` wrapper).
-func EmulateDaemonInsideThisProcessForDev(remoteNoccHosts []string, socksProxyAddr string, cmdLine []string, localCxxQueueSize int) (exitCode int, stdout []byte, stderr []byte) {
-	daemon, err := MakeDaemon(remoteNoccHosts, socksProxyAddr, false, int64(localCxxQueueSize))
-	if err != nil {
-		panic(err)
-	}
-	defer daemon.QuitDaemonGracefully("done")
-	go daemon.PeriodicallyInterruptHangedInvocations()
-
-	cwd, _ := os.Getwd()
-	request := DaemonSockRequest{cwd, cmdLine}
-	response := daemon.HandleInvocation(request)
-
-	return response.ExitCode, response.Stdout, response.Stderr
 }

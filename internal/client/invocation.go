@@ -31,7 +31,7 @@ type Invocation struct {
 	cppInFile  string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	cxxName    string      // g++ / clang / etc.
-	cxxArgs    []string    // args like -Wall, -fpch-preprocess and many more, except:
+	cxxArgs    []string     // args like -Wall, -fpch-preprocess and many more, except:
 	cxxIDirs   IncludeDirs // -I / -iquote / -isystem go here
 	depsFlags  DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
@@ -72,15 +72,15 @@ func pathAbs(cwd string, relPath string) string {
 	return filepath.Join(cwd, relPath)
 }
 
-func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invocation *Invocation) {
+func ParseCmdLineInvocation(daemon *Daemon, cwd string, compiler string, cmdLine []string) (invocation *Invocation) {
 	invocation = &Invocation{
-		createTime:    time.Now(),
-		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
-		cxxName:       cmdLine[0],
-		cxxArgs:       make([]string, 0, 10),
+		createTime: time.Now(),
+		sessionID:  atomic.AddUint32(&daemon.totalInvocations, 1),
+		cxxName:    compiler,
+		cxxArgs: make([]string, 0, len(cmdLine)),
 		cxxIDirs:      MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
-		includesCache: daemon.GetOrCreateIncludesCache(cmdLine[0]),
+		includesCache: daemon.GetOrCreateIncludesCache(compiler),
 	}
 
 	parseArgFile := func(key string, arg string, argIndex *int) (string, bool) {
@@ -114,7 +114,7 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 		return ""
 	}
 
-	for i := 1; i < len(cmdLine); i++ {
+	for i := 0; i < len(cmdLine); i++ {
 		arg := cmdLine[i]
 		if len(arg) == 0 {
 			continue
@@ -132,13 +132,20 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
 				invocation.cxxIDirs.dirsIsystem = append(invocation.cxxIDirs.dirsIsystem, pathAbs(cwd, dir))
 				continue
+			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
+				absIFile := pathAbs(cwd, iFile)
+				invocation.cxxIDirs.filePCH = &absIFile
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
 				invocation.cxxIDirs.filesI = append(invocation.cxxIDirs.filesI, pathAbs(cwd, iFile))
 				continue
 			} else if arg == "-march=native" {
 				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
 				return
-			} else if arg == "-I-" || arg == "-E" || arg == "-nostdinc" || arg == "-nostdinc++" ||
+			} else if arg == "-nostdinc" {
+				invocation.includesCache.defIDirs.stdinc = true
+			} else if arg == "-nostdinc++" {
+				invocation.includesCache.defIDirs.stdincxx = true
+			} else if arg == "-I-" || arg == "-E" ||
 				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
@@ -151,9 +158,6 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 				}
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if arg == "-Xarch_arm64" {
-				// todo if it's placed before -include, it should remain before it after cmd line reconstruction; for now, skip
-				continue
 			} else if mfFile := parseArgStr("-MF", arg, &i); mfFile != "" {
 				invocation.depsFlags.SetCmdFlagMF(pathAbs(cwd, mfFile))
 				continue
@@ -178,7 +182,7 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 				return
 			} else if arg == "-Xclang" && i < len(cmdLine)-1 { // "-Xclang {xArg}" — leave as is, unless we need to parse arg
 				xArg := cmdLine[i+1]
-				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" {
+				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" || xArg == "-include-pch" {
 					continue // like "-Xclang" doesn't exist
 				}
 				invocation.cxxArgs = append(invocation.cxxArgs, "-Xclang", xArg)
