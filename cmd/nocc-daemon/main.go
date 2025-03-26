@@ -136,29 +136,8 @@ func main() {
 		if err != nil {
 			failedStartDaemon(err)
 		}
-		fmt.Printf("1\000\n")
 
 		daemon.ServeUntilNobodyAlive()
 		return
 	}
-
-	// if we reached this line, then `nocc-daemon g++ ...` was launched directly (not a C++ `nocc` wrapper)
-	// it's mostly for dev purposes: we execute the query like we are inside a daemon, then die.
-
-	if err := client.MakeLoggerClient(*logFileName, *logVerbosity, false); err != nil {
-		failedStart(err)
-	}
-
-	if len(os.Args) < 3 {
-		failedStart("invalid usage: compiler line expected; example: 'nocc g++ main.cpp -o main.o'")
-	}
-
-	if len(remoteNoccHosts) == 0 {
-		failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
-	}
-
-	exitCode, stdout, stderr := client.EmulateDaemonInsideThisProcessForDev(remoteNoccHosts,"", os.Args[1:], 1)
-	_, _ = os.Stdout.Write(stdout)
-	_, _ = os.Stderr.Write(stderr)
-	os.Exit(exitCode)
 }

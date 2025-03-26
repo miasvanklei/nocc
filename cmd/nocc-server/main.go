@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"path"
 	"os"
 	"runtime"
@@ -42,15 +41,6 @@ func prepareEmptyDir(parentDir *string, subdir string) string {
 		failedStart("can't create "+serverDir, err)
 	}
 	return serverDir
-}
-
-// printDockerContainerIP is a dev/debug function called only when build special for local Docker, for local testing.
-// As Docker containers' IP often change, this info at start up is useful for development.
-func printDockerContainerIP() {
-	if conn, err := net.Dial("udp", "8.8.8.8:80"); err == nil {
-		fmt.Println("running in Docker container IP", conn.LocalAddr().(*net.UDPAddr).IP.String())
-		_ = conn.Close()
-	}
 }
 
 func main() {
@@ -137,10 +127,6 @@ func main() {
 	s.Cron, err = server.MakeCron(s)
 	if err != nil {
 		failedStart("Failed to init cron", err)
-	}
-
-	if common.GetVersion() == "docker" {
-		printDockerContainerIP()
 	}
 
 	listener, err := s.StartGRPCListening(fmt.Sprintf("%s:%d", *bindHost, *listenPort))
