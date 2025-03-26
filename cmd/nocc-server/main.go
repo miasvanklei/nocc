@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"path"
 	"os"
 	"runtime"
 	"time"
@@ -26,7 +27,7 @@ func prepareEmptyDir(parentDir *string, subdir string) string {
 	// to start up as quickly as possible, do the following:
 	// 1) rename it to /tmp/nocc/cpp/src-cache.old
 	// 2) clear it recursively in the background
-	serverDir := *parentDir + "/" + subdir
+	serverDir := path.Join(*parentDir, subdir)
 	if _, err := os.Stat(serverDir); err == nil {
 		oldDirRenamed := fmt.Sprintf("%s.old.%d", serverDir, time.Now().Unix())
 		if err := os.Rename(serverDir, oldDirRenamed); err != nil {

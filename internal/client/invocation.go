@@ -120,7 +120,7 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 		}
 		if arg[0] == '-' {
 			if oFile, ok := parseArgFile("-o", arg, &i); ok {
-				invocation.objOutFile = oFile
+				invocation.objOutFile = pathAbs(cmd, oFile)
 				continue
 			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
 				invocation.cxxIDirs.dirsI = append(invocation.cxxIDirs.dirsI, pathAbs(cwd, dir))
@@ -238,7 +238,7 @@ func (invocation *Invocation) GetCppInFileAbs(cwd string) string {
 	if invocation.cppInFile[0] == '/' {
 		return invocation.cppInFile
 	}
-	return cwd + "/" + invocation.cppInFile
+	return pathJoin(cwd, invocation.cppInFile)
 }
 
 func (invocation *Invocation) DoneRecvObj(err error) {
