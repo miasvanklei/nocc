@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VKCOM/nocc/pb"
+	"nocc/pb"
 )
 
 // rpcStatusRes is an intermediate structure describing the rpc /Status request

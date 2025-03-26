@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 const (

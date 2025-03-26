@@ -3,7 +3,7 @@ package client
 import (
 	"sync"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 type includeCachedHFile struct {

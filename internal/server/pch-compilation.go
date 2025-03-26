@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 type compiledPchItem struct {

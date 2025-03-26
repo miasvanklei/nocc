@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 // DepCmdFlags contains flags from the command line to generate .o.d file.

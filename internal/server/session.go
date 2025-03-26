@@ -3,7 +3,7 @@ package server
 import (
 	"sync/atomic"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 // Session is created when a client requests to compile a .cpp file.

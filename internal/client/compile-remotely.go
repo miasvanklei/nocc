@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/VKCOM/nocc/pb"
+	"nocc/pb"
 )
 
 // CompileCppRemotely executes all steps of remote compilation (see comments inside the function).

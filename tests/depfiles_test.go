@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/VKCOM/nocc/internal/client"
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/client"
+	"nocc/internal/common"
 )
 
 func compareTwoDepfiles(lhs *client.DepFile, rhs *client.DepFile, lhsDesc string, rhsDesc string) []string {

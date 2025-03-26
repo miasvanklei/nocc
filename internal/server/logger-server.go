@@ -1,6 +1,6 @@
 package server
 
-import "github.com/VKCOM/nocc/internal/common"
+import "nocc/internal/common"
 
 // anywhere in the server code, use logServer.Info() and other methods for logging
 var logServer *common.LoggerWrapper

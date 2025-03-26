@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/client"
+	"nocc/internal/client"
 )
 
 func createClientAndEmulateDaemonForTesting(cmdLineStr string) (exitCode int, stdout []byte, stderr []byte, err error) {

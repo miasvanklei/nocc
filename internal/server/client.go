@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/common"
-	"github.com/VKCOM/nocc/pb"
+	"nocc/internal/common"
+	"nocc/pb"
 )
 
 const (

@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/VKCOM/nocc/pb"
+	"nocc/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

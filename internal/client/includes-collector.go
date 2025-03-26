@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/common"
-	"github.com/VKCOM/nocc/pb"
+	"nocc/internal/common"
+	"nocc/pb"
 )
 
 // IncludedFile is a dependency for a .cpp compilation (a resolved #include directive, a pch file, a .cpp itself).

@@ -1,4 +1,4 @@
-module github.com/VKCOM/nocc
+module nocc
 
 go 1.20
 

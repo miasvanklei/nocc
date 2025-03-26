@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 // ownIncludedArg describes an argument for an #include directive

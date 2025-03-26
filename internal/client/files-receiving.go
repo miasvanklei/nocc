@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/common"
-	"github.com/VKCOM/nocc/pb"
+	"nocc/internal/common"
+	"nocc/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

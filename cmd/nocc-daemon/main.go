@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/client"
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/client"
+	"nocc/internal/common"
 )
 
 func failedStart(err interface{}) {

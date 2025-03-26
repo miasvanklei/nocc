@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/VKCOM/nocc/internal/common"
-	"github.com/VKCOM/nocc/internal/server"
-	"github.com/VKCOM/nocc/pb"
+	"nocc/internal/common"
+	"nocc/internal/server"
+	"nocc/pb"
 	"google.golang.org/grpc"
 )
 

@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 // ObjFileCache is a /tmp/nocc/obj/obj-cache directory, where the resulting .o files are saved.

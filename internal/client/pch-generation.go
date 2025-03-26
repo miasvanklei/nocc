@@ -3,7 +3,7 @@ package client
 import (
 	"os"
 
-	"github.com/VKCOM/nocc/internal/common"
+	"nocc/internal/common"
 )
 
 // GenerateOwnPch collects all dependencies for own .nocc-pch generation.

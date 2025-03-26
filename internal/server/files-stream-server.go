@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/VKCOM/nocc/pb"
+	"nocc/pb"
 )
 
 // receiveUploadedFileByChunks is an actual implementation of piping a client stream to a local server file.

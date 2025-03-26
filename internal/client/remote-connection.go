@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/VKCOM/nocc/internal/common"
-	"github.com/VKCOM/nocc/pb"
+	"nocc/internal/common"
+	"nocc/pb"
 )
 
 // RemoteConnection represents a state of a current process related to remote execution.
