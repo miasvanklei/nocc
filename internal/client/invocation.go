@@ -220,17 +220,9 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) (invoc
 // There are two modes of finding dependencies:
 // 1. Natively: invoke "cxx -M" (it invokes preprocessor only).
 // 2. Own includes parser, which works much faster and theoretically should return the same (or a bit more) results.
-func (invocation *Invocation) CollectDependentIncludes(cwd string, disableOwnIncludes bool) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
-	cppInFileAbs := invocation.GetCppInFileAbs(cwd)
+func (invocation *Invocation) CollectDependentIncludes(cwd string) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
 
-	if disableOwnIncludes {
-		return CollectDependentIncludesByCxxM(invocation.includesCache, cwd, invocation.cxxName, cppInFileAbs, invocation.cxxArgs, invocation.cxxIDirs)
-	}
-
-	includeDirs := invocation.cxxIDirs
-	includeDirs.MergeWith(invocation.includesCache.cxxDefIDirs)
-
-	return CollectDependentIncludesByOwnParser(invocation.includesCache, cppInFileAbs, includeDirs)
+	return CollectDependentIncludes(invocation, cwd)
 }
 
 // GetCppInFileAbs returns an absolute path to invocation.cppInFile.

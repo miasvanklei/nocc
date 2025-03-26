@@ -1,6 +1,7 @@
 package client
 
 import (
+	"regexp"
 	"sync"
 
 	"nocc/internal/common"
@@ -15,10 +16,8 @@ type includeCachedHFile struct {
 // IncludesCache represents a structure that is kept in memory while the daemon is running.
 // It helps reduce hard disk lookups for #include resolving.
 type IncludesCache struct {
-	// g++ / clang / etc. — detected on daemon start, on first `nocc` invocation
-	cxxName string
 	// default include dirs for current cxxName
-	cxxDefIDirs IncludeDirs
+	defIDirs IncludeDirs
 	// how #include <math.h> is resolved to an /actual/path/to/math.h
 	includesResolve map[string]string
 	// properties of /actual/path/to/math.h (file/sha256 and nested #include list)
@@ -27,12 +26,24 @@ type IncludesCache struct {
 	mu sync.RWMutex
 }
 
-func MakeIncludesCache(cxxName string) (*IncludesCache, error) {
-	cxxDefIDirs, err := GetDefaultCxxIncludeDirsOnLocal(cxxName)
+func MakeIncludesCache(compilerName string) (*IncludesCache, error) {
+	var defIDirs IncludeDirs
+	var err error
+
+	// Regular expression to match "++-" followed by digits
+	re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
+	if re.MatchString(compilerName) {
+		defIDirs, err = GetDefaultCxxIncludeDirsOnLocal(compilerName)
+	} else {
+		defIDirs, err = GetDefaultCIncludeDirsOnLocal(compilerName)
+	}
+
+	if err != nil {
+		return nil, err
+	}
 
 	return &IncludesCache{
-		cxxName:         cxxName,
-		cxxDefIDirs:     cxxDefIDirs,
+		defIDirs:        defIDirs,
 		includesResolve: make(map[string]string),
 		hFilesInfo:      make(map[string]*includeCachedHFile),
 	}, err

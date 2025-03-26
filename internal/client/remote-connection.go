@@ -94,7 +94,7 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 			CppInFile:     invocation.cppInFile,
 			CxxName:       invocation.cxxName,
 			CxxArgs:       invocation.cxxArgs,
-			CxxIDirs:      append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.cxxDefIDirs.AsCxxArgs()...),
+			CxxIDirs:      append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.defIDirs.AsCxxArgs()...),
 			RequiredFiles: requiredFiles,
 		})
 	if err != nil {

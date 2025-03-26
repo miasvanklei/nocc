@@ -17,11 +17,11 @@ func GenerateOwnPch(daemon *Daemon, cwd string, invocation *Invocation) (*common
 		OrigPchFile: invocation.objOutFile,
 		CxxName:     invocation.cxxName,
 		CxxArgs:     invocation.cxxArgs,
-		CxxIDirs:    append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.cxxDefIDirs.AsCxxArgs()...),
+		CxxIDirs:    append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.defIDirs.AsCxxArgs()...),
 	}
 	_ = os.Remove(ownPch.OwnPchFile) // if a previous version exists
 
-	hFiles, inHFile, err := invocation.CollectDependentIncludes(cwd, daemon.disableOwnIncludes)
+	hFiles, inHFile, err := invocation.CollectDependentIncludes(cwd)
 	if err != nil {
 		return nil, err
 	}

@@ -41,7 +41,6 @@ type Daemon struct {
 	localCxxThrottle  chan struct{}
 
 	disableObjCache    bool
-	disableOwnIncludes bool
 	disableLocalCxx    bool
 
 	totalInvocations  uint32
@@ -78,7 +77,7 @@ func detectHostUserName() string {
 	return curUser.Username
 }
 
-func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, disableOwnIncludes bool, maxLocalCxxProcesses int64) (*Daemon, error) {
+func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, maxLocalCxxProcesses int64) (*Daemon, error) {
 	// send env NOCC_SERVERS on connect everywhere
 	// this is for debugging purpose: in production, all clients should have the same servers list
 	// to ensure this, just grep server logs: only one unique string should appear
@@ -100,7 +99,6 @@ func MakeDaemon(remoteNoccHosts []string, disableObjCache bool, disableOwnInclud
 		remoteConnections:  make([]*RemoteConnection, len(remoteNoccHosts)),
 		allRemotesDelim:    allRemotesDelim,
 		localCxxThrottle:   make(chan struct{}, maxLocalCxxProcesses),
-		disableOwnIncludes: disableOwnIncludes,
 		disableObjCache:    disableObjCache,
 		disableLocalCxx:    maxLocalCxxProcesses == 0,
 		activeInvocations:  make(map[uint32]*Invocation, 300),
@@ -274,15 +272,15 @@ func (daemon *Daemon) FallbackToLocalCxx(req DaemonSockRequest, reason error) Da
 	return reply
 }
 
-func (daemon *Daemon) GetOrCreateIncludesCache(cxxName string) *IncludesCache {
+func (daemon *Daemon) GetOrCreateIncludesCache(compilerName string) *IncludesCache {
 	daemon.mu.Lock()
-	includesCache := daemon.includesCache[cxxName]
+	includesCache := daemon.includesCache[compilerName]
 	if includesCache == nil {
 		var err error
-		if includesCache, err = MakeIncludesCache(cxxName); err != nil {
-			logClient.Error("failed to calc default include dirs for", cxxName, err)
+		if includesCache, err = MakeIncludesCache(compilerName); err != nil {
+			logClient.Error("failed to calc default include dirs for", compilerName, err)
 		}
-		daemon.includesCache[cxxName] = includesCache
+		daemon.includesCache[compilerName] = includesCache
 	}
 	daemon.mu.Unlock()
 	return includesCache

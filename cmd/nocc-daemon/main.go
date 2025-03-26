@@ -71,8 +71,6 @@ func main() {
 		"", "NOCC_LOG_VERBOSITY")
 	disableObjCache := common.CmdEnvBool("Disable obj cache on remote: .o will be compiled always and won't be stored.", false,
 		"", "NOCC_DISABLE_OBJ_CACHE")
-	disableOwnIncludes := common.CmdEnvBool("Disable own includes parser: use a C++ preprocessor instead.\nIt's much slower, but 100% works.\nBy default, nocc traverses #include-s recursively using its own built-in parser.", false,
-		"", "NOCC_DISABLE_OWN_INCLUDES")
 	localCxxQueueSize := common.CmdEnvInt("Amount of parallel processes when remotes aren't available and cxx is launched locally.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
 		"", "NOCC_LOCAL_CXX_QUEUE_SIZE")
 
@@ -128,7 +126,7 @@ func main() {
 			failedStartDaemon(err)
 		}
 
-		daemon, err := client.MakeDaemon(remoteNoccHosts, *disableObjCache, *disableOwnIncludes, *localCxxQueueSize)
+		daemon, err := client.MakeDaemon(remoteNoccHosts, *disableObjCache, *localCxxQueueSize)
 		if err != nil {
 			failedStartDaemon(err)
 		}
@@ -157,7 +155,7 @@ func main() {
 		failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
 	}
 
-	exitCode, stdout, stderr := client.EmulateDaemonInsideThisProcessForDev(remoteNoccHosts, os.Args[1:], *disableOwnIncludes, 1)
+	exitCode, stdout, stderr := client.EmulateDaemonInsideThisProcessForDev(remoteNoccHosts, os.Args[1:], 1)
 	_, _ = os.Stdout.Write(stdout)
 	_, _ = os.Stderr.Write(stderr)
 	os.Exit(exitCode)

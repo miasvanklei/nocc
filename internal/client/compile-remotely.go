@@ -14,16 +14,12 @@ func CompileCppRemotely(daemon *Daemon, cwd string, invocation *Invocation, remo
 	invocation.wgRecv.Add(1)
 
 	// 1. For an input .cpp file, find all dependent .h/.nocc-pch/etc. that are required for compilation
-	hFiles, cppFile, err := invocation.CollectDependentIncludes(cwd, daemon.disableOwnIncludes)
+	hFiles, cppFile, err := invocation.CollectDependentIncludes(cwd)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("failed to collect depencies: %v", err)
 	}
 	invocation.summary.nIncludes = len(hFiles)
 	invocation.summary.AddTiming("collected_includes")
-
-	// uncomment this to debug if "cxx -M" finds more #include dependencies than own parser
-	// cxxMFoundHFiles, _, _ := invocation.CollectDependentIncludes(true)
-	// CompareOwnIncludesParserAndCxxM(invocation.cppInFile, hFiles, cxxMFoundHFiles)
 
 	// if cxx is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
 	// we do it on a client side (moreover, they are stripped off cxxArgs and not sent to the remote)

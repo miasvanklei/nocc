@@ -123,7 +123,7 @@ func (deps *DepCmdFlags) calcOutputDepFileName(invocation *Invocation) string {
 // calcDepListFromHFiles fills DepFileTarget.TargetDepList
 func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []*IncludedFile) []string {
 	if deps.flagMMD {
-		hFiles = deps.filterOutSystemHFiles(invocation.includesCache.cxxDefIDirs, hFiles)
+		hFiles = deps.filterOutSystemHFiles(invocation.includesCache.defIDirs, hFiles)
 	}
 
 	processPwd, _ := os.Getwd()
