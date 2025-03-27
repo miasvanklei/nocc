@@ -121,16 +121,23 @@ func (pchCompilation *PchCompilation) waitUntilCompiled(ownPchHash common.SHA256
 // This makes #include "all-headers.h" inside 1.cpp work as expected.
 func (pchCompilation *PchCompilation) CreateHardLinkFromRealPch(ownPchName string, ownPchHash common.SHA256) error {
 	pchCompilation.mu.Lock()
+	defer pchCompilation.mu.Unlock()
 	compiledPch := pchCompilation.compiledPchList[ownPchHash]
-	pchCompilation.mu.Unlock()
 
 	if compiledPch == nil {
 		return fmt.Errorf("can't find compiled pch by hash %s", ownPchHash.ToLongHexString())
 	}
 
 	clientHFile := path.Join(path.Dir(ownPchName), path.Base(compiledPch.ownPch.OrigHFile))
-	clientPchFile := path.Join(path.Dir(ownPchName), path.Base(compiledPch.ownPch.OrigPchFile))
-
+	if _, err := os.Lstat(clientHFile); err == nil {
+		return nil
+	}
 	_ = os.Link(compiledPch.realHFile, clientHFile)
+
+	clientPchFile := path.Join(path.Dir(ownPchName), path.Base(compiledPch.ownPch.OrigPchFile))
+	if _, err := os.Lstat(clientPchFile); err == nil {
+		return nil
+	}
+
 	return os.Link(compiledPch.realPchFile, clientPchFile)
 }
