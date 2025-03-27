@@ -186,15 +186,14 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 	default:
 		return daemon.FallbackToLocalCxx(req, errors.New("unexpected invokeType after parsing"))
 
+	case invokedForLocalCompiling:
+		return daemon.FallbackToLocalCxx(req, nil)
 	case invokedUnsupported:
 		// if command-line has unsupported options or is non-well-formed,
 		// invocation.err describes a human-readable reason
 		return daemon.FallbackToLocalCxx(req, invocation.err)
 
 	case invokedForLinking:
-		// generally, linking commands are detected by the C++ wrapper, they aren't sent to daemon at all
-		// (it's a moment of optimization, because linking commands are usually very long)
-		// that's why it's rather strange if this case is true in production, but it's not an error anyway
 		logClient.Info(1, "fallback to local cxx for linking")
 		return daemon.FallbackToLocalCxx(req, nil)
 

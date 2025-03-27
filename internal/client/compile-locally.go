@@ -33,7 +33,7 @@ func (localCxx *LocalCxxLaunch) RunCxxLocally() (exitCode int, stdout []byte, st
 	stdout = cxxStdout.Bytes()
 	stderr = cxxStderr.Bytes()
 	if len(stderr) == 0 && err != nil {
-		stderr = []byte(fmt.Sprintln(err))
+		stderr = fmt.Appendln(nil, err)
 	}
 	return
 }

@@ -45,7 +45,7 @@ func (cxxLauncher *CxxLauncher) LaunchCxxWhenPossible(noccServer *NoccServer, se
 	atomic.AddInt64(&cxxLauncher.nSessionsReadyButWaiting, -1)
 	curParallelCount := atomic.AddInt64(&cxxLauncher.nSessionsNowCompiling, 1)
 
-	logServer.Info(1, "launch cxx #", curParallelCount, "sessionID", session.sessionID, "clientID", session.client.clientID, session.cppInFile)
+	logServer.Info(1, "launch cxx #", curParallelCount, "sessionID", session.sessionID, "clientID", session.client.clientID, session.cxxCmdLine)
 	cxxLauncher.launchServerCxxForCpp(session, noccServer) // blocking until cxx ends
 
 	atomic.AddInt64(&cxxLauncher.nSessionsNowCompiling, -1)

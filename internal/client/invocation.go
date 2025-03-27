@@ -12,6 +12,7 @@ import (
 
 const (
 	invokedUnsupported = iota
+	invokedForLocalCompiling
 	invokedForCompilingCpp
 	invokedForCompilingPch
 	invokedForLinking
@@ -55,7 +56,11 @@ func isSourceFileName(fileName string) bool {
 	return strings.HasSuffix(fileName, ".cpp") ||
 		strings.HasSuffix(fileName, ".cc") ||
 		strings.HasSuffix(fileName, ".cxx") ||
-		strings.HasSuffix(fileName, ".c")
+		strings.HasSuffix(fileName, ".c") ||
+		strings.HasSuffix(fileName, ".C") ||
+		strings.HasSuffix(fileName, ".m") ||
+		strings.HasSuffix(fileName, ".mm")
+
 }
 
 func isHeaderFileName(fileName string) bool {
@@ -196,9 +201,6 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, compiler string, cmdLine
 			}
 			invocation.cppInFile = arg
 			continue
-		} else if strings.HasSuffix(arg, ".o") || strings.HasPrefix(arg, ".so") || strings.HasSuffix(arg, ".a") {
-			invocation.invokeType = invokedForLinking
-			return
 		}
 		invocation.cxxArgs = append(invocation.cxxArgs, arg)
 	}
@@ -207,15 +209,18 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, compiler string, cmdLine
 		return
 	}
 
-	if invocation.cppInFile == "" {
-		invocation.err = fmt.Errorf("unsupported command-line: no input file specified")
-	} else if strings.HasSuffix(invocation.objOutFile, ".o") {
-		invocation.invokeType = invokedForCompilingCpp
+	if strings.Contains(invocation.objOutFile, "/dev/null") {
+		invocation.invokeType = invokedForLocalCompiling
 	} else if strings.Contains(invocation.objOutFile, ".gch") || strings.Contains(invocation.objOutFile, ".pch") {
 		invocation.invokeType = invokedForCompilingPch
+	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
+		invocation.invokeType = invokedForCompilingCpp
+	} else if invocation.objOutFile != "" {
+		invocation.invokeType = invokedForLinking
 	} else {
-		invocation.err = fmt.Errorf("unsupported output file extension: %s", invocation.objOutFile)
+		invocation.err = fmt.Errorf("unsupported command-line: no output file specified")
 	}
+
 	return
 }
 
