@@ -104,13 +104,13 @@ func sendRequest(conn net.Conn, current_path string, compiler string, arguments 
 }
 
 func readResponse(conn net.Conn, compiler string, arguments []string) (daemonSockResponse DaemonSockResponse) {
-	slice, err := bufio.NewReaderSize(conn, 32*1024).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
 		executeLocally(compiler, arguments, "Couldn't read from socket\n")
 		return
 	}
 
-	responseParts := strings.Split(string(slice[0:len(slice)-2]), "\b") // -1 to strip off the trailing '\0'
+	responseParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
 
 	if len(responseParts) != 3 {
 		executeLocally(compiler, arguments, "Received more than 3 parts in response\n")

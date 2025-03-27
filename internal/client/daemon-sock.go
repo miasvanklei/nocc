@@ -84,8 +84,9 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 // Response message format:
 // "{ExitCode}\b{Stdout}\b{Stderr}\0"
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
-	slice, err := bufio.NewReaderSize(conn, 32 * 1024).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 64 * 1024).ReadSlice(0)
 	if err != nil {
+		logClient.Error("couldn't read from socket", err)
 		listener.respondErr(conn)
 		return
 	}
@@ -110,7 +111,7 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 }
 
 func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSockResponse) {
-	_, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\b\000", resp.ExitCode, resp.Stdout, resp.Stderr))
+	_, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\000", resp.ExitCode, resp.Stdout, resp.Stderr))
 	_ = conn.Close()
 }
 
