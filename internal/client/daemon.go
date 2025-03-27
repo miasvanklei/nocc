@@ -12,10 +12,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"nocc/internal/common"
+)
+
+type ServerState int
+
+const (
+	StateDisconnected ServerState = iota
+	StateConnected
+	StateConnecting
 )
 
 const (
@@ -29,19 +38,23 @@ const (
 // `nocc-daemon` quits in 15 seconds after it stops receiving new connections.
 // (the next `nocc` invocation will spawn the daemon again)
 type Daemon struct {
-	startTime time.Time
-	quitChan  chan int
+	startTime            time.Time
+	quitDaemonChan       chan int
+	disconnectServerchan chan int
+	connectedServerchan chan int
+	serverStatus         atomic.Int32
 
 	clientID     string
 	hostUserName string
 
 	listener          *DaemonUnixSockListener
 	remoteConnections []*RemoteConnection
-	allRemotesDelim   string
+	remoteNoccHosts   []string
+	socksProxyAddr    string
 	localCxxThrottle  chan struct{}
 
-	disableObjCache    bool
-	disableLocalCxx    bool
+	disableObjCache bool
+	disableLocalCxx bool
 
 	totalInvocations  uint32
 	activeInvocations map[uint32]*Invocation
@@ -78,49 +91,36 @@ func detectHostUserName() string {
 }
 
 func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache bool, maxLocalCxxProcesses int64) (*Daemon, error) {
-	// send env NOCC_SERVERS on connect everywhere
-	// this is for debugging purpose: in production, all clients should have the same servers list
-	// to ensure this, just grep server logs: only one unique string should appear
-	allRemotesDelim := ""
-	for _, remoteHostPort := range remoteNoccHosts {
-		if allRemotesDelim != "" {
-			allRemotesDelim += ","
-		}
-		allRemotesDelim += ExtractRemoteHostWithoutPort(remoteHostPort)
-	}
-
-	// env NOCC_SERVERS and others are supposed to be the same between `nocc` invocations
-	// (in practice, this is true, as the first `nocc` invocation has no precedence over any other in a bunch)
 	daemon := &Daemon{
-		startTime:          time.Now(),
-		quitChan:           make(chan int),
-		clientID:           detectClientID(),
-		hostUserName:       detectHostUserName(),
-		remoteConnections:  make([]*RemoteConnection, len(remoteNoccHosts)),
-		allRemotesDelim:    allRemotesDelim,
-		localCxxThrottle:   make(chan struct{}, maxLocalCxxProcesses),
-		disableObjCache:    disableObjCache,
-		disableLocalCxx:    maxLocalCxxProcesses == 0,
-		activeInvocations:  make(map[uint32]*Invocation, 300),
-		includesCache:      make(map[string]*IncludesCache, 1),
+		startTime:            time.Now(),
+		quitDaemonChan:       make(chan int),
+		disconnectServerchan: make(chan int),
+		connectedServerchan:  make(chan int),
+		clientID:             detectClientID(),
+		hostUserName:         detectHostUserName(),
+		remoteConnections:    make([]*RemoteConnection, len(remoteNoccHosts)),
+		remoteNoccHosts:      remoteNoccHosts,
+		socksProxyAddr:       socksProxyAddr,
+		localCxxThrottle:     make(chan struct{}, maxLocalCxxProcesses),
+		disableObjCache:      disableObjCache,
+		disableLocalCxx:      maxLocalCxxProcesses == 0,
+		activeInvocations:    make(map[uint32]*Invocation, 300),
+		includesCache:        make(map[string]*IncludesCache, 1),
 	}
-
-	// connect to all remotes in parallel
-	daemon.connectToRemoteHosts(remoteNoccHosts, socksProxyAddr)
 
 	return daemon, nil
 }
 
-func (daemon *Daemon) connectToRemoteHosts(remoteNoccHosts []string, socksProxyAddr string) {
+func (daemon *Daemon) ConnectToRemoteHosts() {
 	wg := sync.WaitGroup{}
-	wg.Add(len(remoteNoccHosts))
+	wg.Add(len(daemon.remoteNoccHosts))
 
 	ctxConnect, cancelFunc := context.WithTimeout(context.Background(), 5000*time.Millisecond)
 	defer cancelFunc()
 
-	for index, remoteHostPort := range remoteNoccHosts {
+	for index, remoteHostPort := range daemon.remoteNoccHosts {
 		go func(index int, remoteHostPort string) {
-			remote, err := MakeRemoteConnection(daemon, remoteHostPort, socksProxyAddr, ctxConnect)
+			remote, err := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr, ctxConnect)
 			if err != nil {
 				remote.isUnavailable = true
 				logClient.Error("error connecting to", remoteHostPort, err)
@@ -131,6 +131,10 @@ func (daemon *Daemon) connectToRemoteHosts(remoteNoccHosts []string, socksProxyA
 		}(index, remoteHostPort)
 	}
 	wg.Wait()
+
+	daemon.disconnectServerchan = make(chan int)
+	daemon.serverStatus.Store(int32(StateConnected))
+	daemon.connectedServerchan <- 1
 }
 
 func (daemon *Daemon) StartListeningUnixSocket(daemonUnixSock string) error {
@@ -154,7 +158,7 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 	logClient.Info(0, "daemon quit:", reason)
 
 	defer func() { _ = recover() }()
-	close(daemon.quitChan)
+	close(daemon.disconnectServerchan)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -168,6 +172,8 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 		invocation.ForceInterrupt(fmt.Errorf("daemon quit: %v", reason))
 	}
 	daemon.mu.Unlock()
+
+	daemon.serverStatus.Store(int32(StateDisconnected))
 }
 
 func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason error) {
@@ -302,7 +308,7 @@ func (daemon *Daemon) PeriodicallyInterruptHangedInvocations() {
 
 	for {
 		select {
-		case <-daemon.quitChan:
+		case <-daemon.quitDaemonChan:
 			return
 
 		case sig := <-signals:

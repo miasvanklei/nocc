@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 )
 
 type LoggerWrapper struct {
@@ -40,17 +39,17 @@ func MakeLogger(logFile string, verbosity int64, noLogsIfEmpty bool, duplicateTo
 	}, nil
 }
 
-func formatStr(prefix string, v ...interface{}) string {
-	return fmt.Sprintf("%s %s %s", time.Now().Format("2006-01-02 15:04:05"), prefix, fmt.Sprintln(v...))
+func formatStr(prefix string, v ...any) string {
+	return fmt.Sprintf("%s %s", prefix, fmt.Sprintln(v...))
 }
 
-func (logger *LoggerWrapper) Info(verbosity int, v ...interface{}) {
+func (logger *LoggerWrapper) Info(verbosity int, v ...any) {
 	if logger.verbosity >= verbosity && logger.impl != nil {
 		_ = logger.impl.Output(0, formatStr("INFO", v...))
 	}
 }
 
-func (logger *LoggerWrapper) Error(v ...interface{}) {
+func (logger *LoggerWrapper) Error(v ...any) {
 	if logger.impl != nil {
 		_ = logger.impl.Output(0, formatStr("ERROR", v...))
 	}
@@ -59,7 +58,7 @@ func (logger *LoggerWrapper) Error(v ...interface{}) {
 	}
 }
 
-func (logger *LoggerWrapper) TmpDebug(v ...interface{}) {
+func (logger *LoggerWrapper) TmpDebug(v ...any) {
 	if logger.impl != nil {
 		_ = logger.impl.Output(0, formatStr("DEBUG", v...))
 	}

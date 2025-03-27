@@ -92,10 +92,6 @@ func (s *NoccServer) StartClient(_ context.Context, in *pb.StartClientRequest) (
 
 	logServer.Info(0, "new client", "clientID", client.clientID, "version", in.ClientVersion, "; nClients", s.ActiveClients.ActiveCount())
 
-	if in.AllRemotesDelim != "" && s.ActiveClients.IsRemotesListSeenTheFirstTime(in.AllRemotesDelim, client.clientID) {
-		logServer.Info(0, "new remotes list", strings.Count(in.AllRemotesDelim, ",")+1, "clientID", client.clientID, in.AllRemotesDelim)
-	}
-
 	return &pb.StartClientReply{}, nil
 }
 
@@ -390,7 +386,6 @@ func (s *NoccServer) Status(context.Context, *pb.StatusRequest) (*pb.StatusReply
 		CxxCalls:        s.CxxLauncher.GetTotalCxxCallsCount(),
 		CxxDurMore10Sec: s.CxxLauncher.GetMore10secCount(),
 		CxxDurMore30Sec: s.CxxLauncher.GetMore30secCount(),
-		UniqueRemotes:   s.ActiveClients.GetUniqueRemotesListInfo(),
 	}, nil
 }
 

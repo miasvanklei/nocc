@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,34 +151,4 @@ func (allClients *ClientsStorage) TotalFilesCountInDirs() int64 {
 	}
 	allClients.mu.RUnlock()
 	return filesCount
-}
-
-// IsRemotesListSeenTheFirstTime maintains allClients.uniqueRemotesList.
-// It's mostly for debug purposes — to detect clients with strange NOCC_SERVERS env.
-// Probably, will be deleted in the future.
-func (allClients *ClientsStorage) IsRemotesListSeenTheFirstTime(allRemotesDelim string, clientID string) bool {
-	allClients.mu.RLock()
-	_, exists := allClients.uniqueRemotesList[allRemotesDelim]
-	allClients.mu.RUnlock()
-
-	if !exists {
-		allClients.mu.Lock()
-		allClients.uniqueRemotesList[allRemotesDelim] = clientID
-		allClients.mu.Unlock()
-	}
-
-	return !exists
-}
-
-func (allClients *ClientsStorage) GetUniqueRemotesListInfo() (uniqueInfo []string) {
-	allClients.mu.RLock()
-
-	uniqueInfo = make([]string, 0, len(allClients.uniqueRemotesList))
-	for allRemotesDelim, clientID := range allClients.uniqueRemotesList {
-		nRemotes := strings.Count(allRemotesDelim, ",") + 1
-		uniqueInfo = append(uniqueInfo, fmt.Sprintf("(n=%d) clientID %s : %s", nRemotes, clientID, allRemotesDelim))
-	}
-
-	allClients.mu.RUnlock()
-	return
 }

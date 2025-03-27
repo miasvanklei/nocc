@@ -9,6 +9,7 @@ import (
 
 	"nocc/internal/common"
 	"nocc/pb"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -63,9 +64,9 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 
 		// such complexity of error handling prevents hanging sessions and proper stream recreation
 		if err != nil {
-			// when a daemon quits, all streams are automatically closed
+			// when a daemon stops listening, all streams are automatically closed
 			select {
-			case <-fr.daemon.quitChan:
+			case <-fr.daemon.disconnectServerchan:
 				return
 			default:
 				break

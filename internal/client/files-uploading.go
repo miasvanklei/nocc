@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nocc/pb"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -70,7 +71,7 @@ func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.Compilatio
 
 	for {
 		select {
-		case <-fu.daemon.quitChan:
+		case <-fu.daemon.disconnectServerchan:
 			return
 
 		case req := <-fu.chanToUpload:
@@ -84,9 +85,9 @@ func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.Compilatio
 
 			// such complexity of error handling prevents hanging sessions and proper stream recreation
 			if err != nil {
-				// when a daemon quits, all streams are automatically closed
+				// when a daemon stops listening, all streams are automatically closed
 				select {
-				case <-fu.daemon.quitChan:
+				case <-fu.daemon.disconnectServerchan:
 					return
 				default:
 					break

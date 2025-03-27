@@ -59,7 +59,6 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 		HostUserName:    daemon.hostUserName,
 		ClientVersion:   common.GetVersion(),
 		DisableObjCache: daemon.disableObjCache,
-		AllRemotesDelim: daemon.allRemotesDelim, // just to log on a server-side
 	})
 	if err != nil {
 		return remote, err

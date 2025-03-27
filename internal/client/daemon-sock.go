@@ -49,7 +49,7 @@ func (listener *DaemonUnixSockListener) StartAcceptingConnections(daemon *Daemon
 		conn, err := listener.netListener.Accept()
 		if err != nil {
 			select {
-			case <-daemon.quitChan:
+			case <-daemon.quitDaemonChan:
 				return
 			default:
 				logClient.Error("daemon accept error:", err)
@@ -64,13 +64,14 @@ func (listener *DaemonUnixSockListener) StartAcceptingConnections(daemon *Daemon
 func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemon) {
 	for {
 		select {
-		case <-daemon.quitChan:
+		case <-daemon.quitDaemonChan:
 			_ = listener.netListener.Close() // Accept() will return an error immediately
 			return
 
 		case <-time.After(5 * time.Second):
 			nActive := atomic.LoadInt32(&listener.activeConnections)
-			if nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
+			isDisconnected := daemon.serverStatus.Load() == int32(StateDisconnected)
+			if !isDisconnected && nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
 				daemon.QuitDaemonGracefully("no connections receiving anymore")
 			}
 		}
@@ -84,7 +85,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 // Response message format:
 // "{ExitCode}\b{Stdout}\b{Stderr}\0"
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
-	slice, err := bufio.NewReaderSize(conn, 64 * 1024).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 64*1024).ReadSlice(0)
 	if err != nil {
 		logClient.Error("couldn't read from socket", err)
 		listener.respondErr(conn)
@@ -103,7 +104,16 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 	}
 
 	atomic.AddInt32(&listener.activeConnections, 1)
+
+	if daemon.serverStatus.CompareAndSwap(int32(StateDisconnected), int32(StateConnecting)) {
+		go daemon.ConnectToRemoteHosts()
+		<-daemon.connectedServerchan
+	} else if daemon.serverStatus.Load() == int32(StateConnecting) {
+		<-daemon.connectedServerchan
+	}
+
 	response := daemon.HandleInvocation(request)
+
 	atomic.AddInt32(&listener.activeConnections, -1)
 	listener.lastTimeAlive = time.Now()
 

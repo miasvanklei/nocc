@@ -33,7 +33,6 @@ message StartClientRequest {
     string HostUserName = 2;
     string ClientVersion = 3;
     bool DisableObjCache = 10;
-    string AllRemotesDelim = 20;
 }
 
 message StartClientReply {
