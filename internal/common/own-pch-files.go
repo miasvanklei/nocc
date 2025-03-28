@@ -94,8 +94,8 @@ func (ownPch *OwnPch) CalcPchHash() {
 }
 
 // SaveToOwnPchFile is invoked on the client side to create a .nocc-pch file.
-func (ownPch *OwnPch) SaveToOwnPchFile() (int64, error) {
-	f, err := OpenTempFile(ownPch.OwnPchFile)
+func (ownPch *OwnPch) SaveToOwnPchFile(uid int, gid int) (int64, error) {
+	f, err := OpenTempFile(ownPch.OwnPchFile, uid, gid)
 	if err != nil {
 		return 0, err
 	}

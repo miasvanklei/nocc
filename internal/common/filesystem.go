@@ -15,9 +15,11 @@ func MkdirForFile(fileName string) error {
 	return nil
 }
 
-func OpenTempFile(fullPath string) (f *os.File, err error) {
+func OpenTempFile(fullPath string, uid int, gid int) (f *os.File, err error) {
 	fileNameTmp := fullPath + "." + strconv.Itoa(rand.Int())
-	return os.OpenFile(fileNameTmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, os.ModePerm)
+	fileTmp, err := os.OpenFile(fileNameTmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, os.ModePerm)
+	fileTmp.Chown(uid, gid)
+	return fileTmp, err
 }
 
 func ReplaceFileExt(fileName string, newExt string) string {

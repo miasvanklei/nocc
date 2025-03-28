@@ -71,7 +71,7 @@ func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.Compilatio
 
 	for {
 		select {
-		case <-fu.daemon.disconnectServerchan:
+		case <-fu.daemon.quitDaemonChan:
 			return
 
 		case req := <-fu.chanToUpload:
@@ -87,7 +87,7 @@ func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.Compilatio
 			if err != nil {
 				// when a daemon stops listening, all streams are automatically closed
 				select {
-				case <-fu.daemon.disconnectServerchan:
+				case <-fu.daemon.quitDaemonChan:
 					return
 				default:
 					break

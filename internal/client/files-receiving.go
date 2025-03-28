@@ -66,7 +66,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		if err != nil {
 			// when a daemon stops listening, all streams are automatically closed
 			select {
-			case <-fr.daemon.disconnectServerchan:
+			case <-fr.daemon.quitDaemonChan:
 				return
 			default:
 				break
@@ -105,7 +105,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
 			if firstChunk.CxxExitCode == 0 {
-				if err, _ = receiveObjFileByChunks(stream, firstChunk, "/tmp/nocc-dev-null"); err != nil {
+				if err, _ = receiveObjFileByChunks(stream, firstChunk, os.Getuid(), os.Getgid(), "/tmp/nocc-dev-null"); err != nil {
 					fr.RecreateReceiveStreamOrQuit(cancelFunc, err)
 					return
 				}
@@ -125,7 +125,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			continue
 		}
 
-		err, needRecreateStream := receiveObjFileByChunks(stream, firstChunk, invocation.objOutFile)
+		err, needRecreateStream := receiveObjFileByChunks(stream, firstChunk, invocation.uid, invocation.gid, invocation.objOutFile)
 		invocation.DoneRecvObj(err)
 
 		// recreate a stream if it's corrupted, like chunks mismatch
@@ -141,7 +141,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 
 // receiveObjFileByChunks is an actual implementation of saving a server stream to a local client .o file.
 // See server.sendObjFileByChunks.
-func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, firstChunk *pb.RecvCompiledObjChunkReply, objOutFile string) (error, bool) {
+func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, firstChunk *pb.RecvCompiledObjChunkReply, uid int, gid int, objOutFile string) (error, bool) {
 	receivedBytes := len(firstChunk.ChunkBody)
 	expectedBytes := int(firstChunk.FileSize)
 
@@ -154,7 +154,8 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 		return errWrite, false
 	}
 
-	fileTmp, errWrite := common.OpenTempFile(objOutFile)
+	fileTmp, errWrite := common.OpenTempFile(objOutFile, uid, gid)
+
 	if errWrite == nil {
 		_, errWrite = fileTmp.Write(firstChunk.ChunkBody)
 	}

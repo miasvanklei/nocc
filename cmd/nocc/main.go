@@ -18,7 +18,7 @@ type DaemonSockResponse struct {
 }
 
 func main() {
-	c, err := net.Dial("unix", "/tmp/nocc.sock")
+	c, err := net.Dial("unix", "/run/nocc-daemon.sock")
 	exitOnError(err)
 	defer c.Close()
 

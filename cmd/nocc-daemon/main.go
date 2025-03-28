@@ -9,6 +9,7 @@ import (
 
 	"nocc/internal/client"
 	"nocc/internal/common"
+	sdaemon "github.com/coreos/go-systemd/v22/daemon"
 )
 
 func failedStart(err any) {
@@ -132,12 +133,13 @@ func main() {
 		if err != nil {
 			failedStartDaemon(err)
 		}
-		err = daemon.StartListeningUnixSocket("/tmp/nocc.sock")
+		err = daemon.StartListeningUnixSocket()
 		if err != nil {
 			failedStartDaemon(err)
 		}
 
 		daemon.ServeUntilNobodyAlive()
+		_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyStopping)
 		return
 	}
 }

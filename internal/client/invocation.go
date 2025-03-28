@@ -25,6 +25,8 @@ type Invocation struct {
 	invokeType int   // one of the constants above
 	err        error // any error occurred while parsing/uploading/compiling/receiving
 
+	uid int
+	gid int
 	createTime time.Time // used for local timeout
 	sessionID  uint32    // incremental while a daemon is alive
 
@@ -77,17 +79,7 @@ func pathAbs(cwd string, relPath string) string {
 	return filepath.Join(cwd, relPath)
 }
 
-func ParseCmdLineInvocation(daemon *Daemon, cwd string, compiler string, cmdLine []string) (invocation *Invocation) {
-	invocation = &Invocation{
-		createTime: time.Now(),
-		sessionID:  atomic.AddUint32(&daemon.totalInvocations, 1),
-		cxxName:    compiler,
-		cxxArgs: make([]string, 0, len(cmdLine)),
-		cxxIDirs:      MakeIncludeDirs(),
-		summary:       MakeInvocationSummary(),
-		includesCache: daemon.GetOrCreateIncludesCache(compiler),
-	}
-
+func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) {
 	parseArgFile := func(key string, arg string, argIndex *int) (string, bool) {
 		if arg == key { // -I /path
 			if *argIndex+1 < len(cmdLine) {
@@ -220,8 +212,22 @@ func ParseCmdLineInvocation(daemon *Daemon, cwd string, compiler string, cmdLine
 	} else {
 		invocation.err = fmt.Errorf("unsupported command-line: no output file specified")
 	}
+}
 
-	return
+func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
+	invocation := &Invocation{
+		uid: req.Uid,
+		gid: req.Gid,
+		createTime:    time.Now(),
+		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
+		cxxName:       req.Compiler,
+		cxxArgs:       make([]string, 0, len(req.CmdLine)),
+		cxxIDirs:      MakeIncludeDirs(),
+		summary:       MakeInvocationSummary(),
+		includesCache: daemon.GetOrCreateIncludesCache(req.Compiler),
+	}
+
+	return invocation
 }
 
 // CollectDependentIncludes finds dependencies for an input .cpp file.

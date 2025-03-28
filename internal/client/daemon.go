@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -40,9 +39,6 @@ const (
 type Daemon struct {
 	startTime            time.Time
 	quitDaemonChan       chan int
-	disconnectServerchan chan int
-	connectedServerchan chan int
-	serverStatus         atomic.Int32
 
 	clientID     string
 	hostUserName string
@@ -94,8 +90,6 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache
 	daemon := &Daemon{
 		startTime:            time.Now(),
 		quitDaemonChan:       make(chan int),
-		disconnectServerchan: make(chan int),
-		connectedServerchan:  make(chan int),
 		clientID:             detectClientID(),
 		hostUserName:         detectHostUserName(),
 		remoteConnections:    make([]*RemoteConnection, len(remoteNoccHosts)),
@@ -107,6 +101,8 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache
 		activeInvocations:    make(map[uint32]*Invocation, 300),
 		includesCache:        make(map[string]*IncludesCache, 1),
 	}
+
+	daemon.ConnectToRemoteHosts()
 
 	return daemon, nil
 }
@@ -131,15 +127,11 @@ func (daemon *Daemon) ConnectToRemoteHosts() {
 		}(index, remoteHostPort)
 	}
 	wg.Wait()
-
-	daemon.disconnectServerchan = make(chan int)
-	daemon.serverStatus.Store(int32(StateConnected))
-	daemon.connectedServerchan <- 1
 }
 
-func (daemon *Daemon) StartListeningUnixSocket(daemonUnixSock string) error {
+func (daemon *Daemon) StartListeningUnixSocket() error {
 	daemon.listener = MakeDaemonRpcListener()
-	return daemon.listener.StartListeningUnixSocket(daemonUnixSock)
+	return daemon.listener.StartListeningUnixSocket()
 }
 
 func (daemon *Daemon) ServeUntilNobodyAlive() {
@@ -158,7 +150,7 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 	logClient.Info(0, "daemon quit:", reason)
 
 	defer func() { _ = recover() }()
-	close(daemon.disconnectServerchan)
+	close(daemon.quitDaemonChan)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -172,8 +164,6 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 		invocation.ForceInterrupt(fmt.Errorf("daemon quit: %v", reason))
 	}
 	daemon.mu.Unlock()
-
-	daemon.serverStatus.Store(int32(StateDisconnected))
 }
 
 func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason error) {
@@ -186,7 +176,8 @@ func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason er
 }
 
 func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
-	invocation := ParseCmdLineInvocation(daemon, req.Cwd, req.Compiler, req.CmdLine)
+	invocation := CreateInvocation(daemon, req)
+	invocation.ParseCmdLineInvocation(daemon, req.Cwd, req.CmdLine)
 
 	switch invocation.invokeType {
 	default:
@@ -210,7 +201,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 			return daemon.FallbackToLocalCxx(req, fmt.Errorf("failed to generate pch file: %v", err))
 		}
 
-		fileSize, err := ownPch.SaveToOwnPchFile()
+		fileSize, err := ownPch.SaveToOwnPchFile(invocation.uid, invocation.gid)
 		if err != nil {
 			return daemon.FallbackToLocalCxx(req, fmt.Errorf("failed to save pch file: %v", err))
 		}

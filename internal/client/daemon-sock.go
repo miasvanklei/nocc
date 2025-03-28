@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/coreos/go-systemd/v22/activation"
+	sdaemon "github.com/coreos/go-systemd/v22/daemon"
+	"golang.org/x/sys/unix"
 )
 
 // DaemonUnixSockListener is created when `nocc-daemon` starts.
@@ -20,6 +23,8 @@ type DaemonUnixSockListener struct {
 }
 
 type DaemonSockRequest struct {
+	Uid      int
+	Gid      int
 	Cwd      string
 	Compiler string
 	CmdLine  []string
@@ -38,9 +43,9 @@ func MakeDaemonRpcListener() *DaemonUnixSockListener {
 	}
 }
 
-func (listener *DaemonUnixSockListener) StartListeningUnixSocket(daemonUnixSock string) (err error) {
-	_ = os.Remove(daemonUnixSock)
-	listener.netListener, err = net.Listen("unix", daemonUnixSock)
+func (listener *DaemonUnixSockListener) StartListeningUnixSocket() (err error) {
+	listeners, err := activation.Listeners()
+	listener.netListener = listeners[0]
 	return
 }
 
@@ -55,6 +60,7 @@ func (listener *DaemonUnixSockListener) StartAcceptingConnections(daemon *Daemon
 				logClient.Error("daemon accept error:", err)
 			}
 		} else {
+			_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyReady)
 			listener.lastTimeAlive = time.Now()
 			go listener.onRequest(conn, daemon) // `nocc` invocation
 		}
@@ -70,8 +76,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 
 		case <-time.After(5 * time.Second):
 			nActive := atomic.LoadInt32(&listener.activeConnections)
-			isDisconnected := daemon.serverStatus.Load() == int32(StateDisconnected)
-			if !isDisconnected && nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
+			if nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
 				daemon.QuitDaemonGracefully("no connections receiving anymore")
 			}
 		}
@@ -85,6 +90,8 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 // Response message format:
 // "{ExitCode}\b{Stdout}\b{Stderr}\0"
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
+	uid, gid := getConnectedUser(conn)
+
 	slice, err := bufio.NewReaderSize(conn, 64*1024).ReadSlice(0)
 	if err != nil {
 		logClient.Error("couldn't read from socket", err)
@@ -98,26 +105,28 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 		return
 	}
 	request := DaemonSockRequest{
+		Uid:      uid,
+		Gid:      gid,
 		Cwd:      reqParts[0],
 		Compiler: reqParts[1],
 		CmdLine:  strings.Split(reqParts[2], " "),
 	}
 
 	atomic.AddInt32(&listener.activeConnections, 1)
-
-	if daemon.serverStatus.CompareAndSwap(int32(StateDisconnected), int32(StateConnecting)) {
-		go daemon.ConnectToRemoteHosts()
-		<-daemon.connectedServerchan
-	} else if daemon.serverStatus.Load() == int32(StateConnecting) {
-		<-daemon.connectedServerchan
-	}
-
 	response := daemon.HandleInvocation(request)
-
 	atomic.AddInt32(&listener.activeConnections, -1)
 	listener.lastTimeAlive = time.Now()
 
 	listener.respondOk(conn, &response)
+}
+
+func getConnectedUser(conn net.Conn) (uid int, gid int) {
+	unixConn := conn.(*net.UnixConn)
+	f, _ := unixConn.File()
+	pcred, _ := unix.GetsockoptUcred(int(f.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
+	f.Close()
+
+	return int(pcred.Uid), int(pcred.Gid)
 }
 
 func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSockResponse) {
