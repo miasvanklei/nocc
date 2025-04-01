@@ -82,14 +82,15 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 	startSessionReply, err := remote.grpcClient.pb.StartCompilationSession(
 		remote.grpcClient.callContext,
 		&pb.StartCompilationSessionRequest{
-			ClientID:      remote.clientID,
-			SessionID:     invocation.sessionID,
-			Cwd:           invocation.cwd,
-			InputFile:     invocation.cppInFile,
-			Compiler:      invocation.compilerName,
-			Args:          append(invocation.compilerArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.compilerName)...),
-			IDirs:         append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
-			RequiredFiles: requiredFiles,
+			ClientID:        remote.clientID,
+			SessionID:       invocation.sessionID,
+			Cwd:             invocation.cwd,
+			InputFile:       invocation.cppInFile,
+			Compiler:        invocation.compilerName,
+			Args:            append(invocation.compilerArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.compilerName)...),
+			IDirs:           append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
+			RequiredFiles:   requiredFiles,
+			RequiredPchFile: requiredPchFile,
 		})
 
 	if err != nil {

@@ -2,12 +2,10 @@ package common
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 )
 
@@ -60,94 +58,6 @@ type OwnPch struct {
 	DepIncludes []ownPchDepInclude
 }
 
-func (ownPch *OwnPch) AddDepInclude(fileName string, fileSize int64, fileSHA256 SHA256) {
-	if ownPch.DepIncludes == nil {
-		ownPch.DepIncludes = make([]ownPchDepInclude, 0, 64)
-	}
-	ownPch.DepIncludes = append(ownPch.DepIncludes, ownPchDepInclude{fileName, fileSize, fileSHA256})
-}
-
-func (ownPch *OwnPch) CalcPchHash() {
-	depsStr := strings.Builder{}
-	depsStr.Grow(4096)
-
-	depsStr.WriteString(ownPch.CxxName)
-	depsStr.WriteString("; args = ")
-	for _, arg := range ownPch.CxxArgs {
-		depsStr.WriteString(arg)
-		depsStr.WriteString(" ")
-	}
-
-	depsStr.WriteString("; deps ")
-	depsStr.WriteString(strconv.Itoa(len(ownPch.DepIncludes)))
-	depsStr.WriteString("; in ")
-	depsStr.WriteString(path.Base(ownPch.OrigHFile))
-
-	hasher := sha256.New()
-	hasher.Write([]byte(depsStr.String()))
-
-	ownPch.PchHash = MakeSHA256Struct(hasher)
-	for _, dep := range ownPch.DepIncludes {
-		ownPch.PchHash.XorWith(&dep.fileSHA256)
-		ownPch.PchHash.B0_7 ^= uint64(dep.fileSize)
-	}
-}
-
-// SaveToOwnPchFile is invoked on the client side to create a .nocc-pch file.
-func (ownPch *OwnPch) SaveToOwnPchFile(uid int, gid int) (int64, error) {
-	f, err := OpenTempFile(ownPch.OwnPchFile, uid, gid)
-	if err != nil {
-		return 0, err
-	}
-
-	var depsSize int64
-	for _, dep := range ownPch.DepIncludes {
-		depsSize += dep.fileSize
-	}
-
-	fmt.Fprintf(f, "PCH_HASH=%s\n\n", ownPch.PchHash.ToLongHexString())
-
-	fmt.Fprintf(f, "# this is a nocc precompiled header generated from\n")
-	fmt.Fprintf(f, "ORIG_HDR=%s\n", ownPch.OrigHFile)
-	fmt.Fprintf(f, "# it was created instead of\n")
-	fmt.Fprintf(f, "ORIG_PCH=%s\n", ownPch.OrigPchFile)
-	fmt.Fprintf(f, "\n")
-
-	fmt.Fprintf(f, "# an actual pch file will be compiled by remotes on demand with these parameters\n")
-	fmt.Fprintf(f, "CXX_NAME=%s\n", ownPch.CxxName)
-	fmt.Fprintf(f, "CXX_ARGS=%s\n", strings.Join(ownPch.CxxArgs, " "))
-	fmt.Fprintf(f, "CXX_DIRS=%s\n", strings.Join(ownPch.CxxIDirs, " "))
-	fmt.Fprintf(f, "\n")
-
-	fmt.Fprintf(f, "# all dependencies are listed below, including system headers\n")
-	fmt.Fprintf(f, "# (in total %d dependencies, %d bytes)\n", len(ownPch.DepIncludes), depsSize)
-	fmt.Fprintf(f, "# when this file is sent to a remote, it automatically compiles %s\n", path.Base(ownPch.OrigPchFile))
-	fmt.Fprintf(f, "# make sure to manually regenerate this file whenever dependent files are changed\n")
-	fmt.Fprintf(f, "\n")
-
-	var contents []byte
-	for _, dep := range ownPch.DepIncludes {
-		fmt.Fprintf(f, "%s %s \\%d %s\n", pchContentsDepIncludesSeparator, dep.fileName, dep.fileSize, dep.fileSHA256.ToLongHexString())
-
-		contents, err = os.ReadFile(dep.fileName)
-		if err != nil {
-			break
-		}
-		_, err = f.Write(contents)
-		if err != nil {
-			break
-		}
-	}
-
-	stat, _ := f.Stat()
-	_ = f.Close()
-	if err != nil {
-		return 0, err
-	}
-
-	_ = os.Remove(ownPch.OwnPchFile)
-	return stat.Size(), os.Rename(f.Name(), ownPch.OwnPchFile)
-}
 
 // ExtractAllDepsToRootDir is called on the server side to recreate a client file structure.
 func (ownPch *OwnPch) ExtractAllDepsToRootDir(rootDir string) error {

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -182,62 +183,77 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 		return daemon.InvokeLocalCompilation(req, nil)
 
 	case invokedForCompilingPch:
-		invocation.includesCache.Clear()
-		ownPch, err := GenerateOwnPch(daemon, req.Cwd, invocation)
-		if err != nil {
-			return daemon.InvokeLocalCompilation(req, fmt.Errorf("failed to generate pch file: %v", err))
-		}
-
-		fileSize, err := ownPch.SaveToOwnPchFile(invocation.uid, invocation.gid)
-		if err != nil {
-			return daemon.InvokeLocalCompilation(req, fmt.Errorf("failed to save pch file: %v", err))
-		}
-
-		invocation.includesCache.AddHFileInfo(ownPch.OwnPchFile, fileSize, ownPch.PchHash)
-		logClient.Info(0, "saved pch file", fileSize, "bytes to", ownPch.OwnPchFile)
-
-		if !daemon.areAllRemotesAvailable() {
-			logClient.Info(0, "compiling real pch file for future local compilations", invocation.objOutFile)
-			return daemon.InvokeLocalCompilation(req, nil)
-		}
-
-		return DaemonSockResponse{
-			ExitCode: 0,
-			Stdout:   []byte(fmt.Sprintf("[nocc] saved pch file to %s\n", ownPch.OwnPchFile)),
-		}
+		logClient.Info(1, "compiling pch locally")
+		return daemon.invokePCHCompilation(req, invocation)
 
 	case invokedForCompilingCpp:
-		if len(daemon.remoteConnections) == 0 {
-			return daemon.InvokeLocalCompilation(req, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers"))
-		}
+		logClient.Info(1, "compiling cpp remotely", invocation.cppInFile)
+		result, err := daemon.invokeForRemoteCompiling(invocation)
 
-		remote := daemon.chooseRemoteConnectionForCppCompilation(invocation.cppInFile)
-		invocation.summary.remoteHost = remote.remoteHost
-
-		if remote.isUnavailable {
-			return daemon.InvokeLocalCompilation(req, fmt.Errorf("remote %s is unavailable", remote.remoteHost))
-		}
-
-		daemon.mu.Lock()
-		daemon.activeInvocations[invocation.sessionID] = invocation
-		daemon.mu.Unlock()
-
-		var err error
-		var reply DaemonSockResponse
-		reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
-
-		daemon.mu.Lock()
-		delete(daemon.activeInvocations, invocation.sessionID)
-		daemon.mu.Unlock()
-
-		if err != nil { // it's not an error in C++ code, it's a network error or remote failure
+		if err != nil {
 			return daemon.InvokeLocalCompilation(req, err)
 		}
 
-		logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
-		return reply
+		return *result
 	}
 }
+
+func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) DaemonSockResponse {
+	response := daemon.InvokeLocalCompilation(req, nil)
+	if response.ExitCode != 0 {
+		return response
+	}
+	sha256PCH, _ := common.GetFileSHA256(invocation.objOutFile)
+
+	pchinvocation := common.PCHInvocation{
+		Hash:       sha256PCH.ToLongHexString(),
+		Cwd:        req.Cwd,
+		Compiler:   req.Compiler,
+		InputFile:  invocation.cppInFile,
+		OutputFile: invocation.objOutFile,
+		Args:       append(invocation.compilerArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.compilerName)...),
+		IDirs:      append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
+	}
+
+	bytes, _ := json.Marshal(&pchinvocation)
+	common.WriteFile(common.ReplaceFileExt(invocation.objOutFile,".nocc-pch"), bytes, invocation.uid, invocation.gid)
+
+	return response
+}
+
+func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonSockResponse, error) {
+	       if len(daemon.remoteConnections) == 0 {
+	               return nil, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers")
+	       }
+
+		   remote := daemon.chooseRemoteConnectionForCppCompilation(invocation.cppInFile)
+
+		   invocation.summary.remoteHost = remote.remoteHost
+
+		   if remote.isUnavailable {
+		       return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
+		   }
+
+		   daemon.mu.Lock()
+		   daemon.activeInvocations[invocation.sessionID] = invocation
+		   daemon.mu.Unlock()
+   
+		   var err error
+		   var reply DaemonSockResponse
+		   reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
+   
+		   daemon.mu.Lock()
+		   delete(daemon.activeInvocations, invocation.sessionID)
+		   daemon.mu.Unlock()
+   
+		   if err != nil { // it's not an error in C++ code, it's a network error or remote failure
+			   return nil, err
+		   }
+   
+		   logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
+
+		   return &reply, nil
+		}
 
 func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) DaemonSockResponse {
 	if reason != nil {
@@ -308,15 +324,6 @@ func (daemon *Daemon) PeriodicallyInterruptHangedInvocations() {
 			daemon.mu.Unlock()
 		}
 	}
-}
-
-func (daemon *Daemon) areAllRemotesAvailable() bool {
-	for _, remote := range daemon.remoteConnections {
-		if remote.isUnavailable {
-			return false
-		}
-	}
-	return true
 }
 
 func (daemon *Daemon) chooseRemoteConnectionForCppCompilation(cppInFile string) *RemoteConnection {
