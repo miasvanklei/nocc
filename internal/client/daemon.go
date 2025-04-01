@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync"
 	"syscall"
@@ -52,9 +53,10 @@ type Daemon struct {
 
 	totalInvocations  uint32
 	activeInvocations map[uint32]*Invocation
-	mu                sync.RWMutex
 
-	includesCache map[string]*IncludesCache // map[compiler_name] => cache (support various compilers during a daemon lifetime)
+	includesDirs map[string]*IncludeDirs
+
+	mu sync.RWMutex
 }
 
 // detectClientID returns a clientID for current daemon launch.
@@ -87,7 +89,7 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompile
 		localCompilerThrottle: make(chan struct{}, maxLocalcompilerProcesses),
 		disableLocalCompiler:  maxLocalcompilerProcesses == 0,
 		activeInvocations:     make(map[uint32]*Invocation, 300),
-		includesCache:         make(map[string]*IncludesCache, 1),
+		includesDirs:         make(map[string]*IncludeDirs, 2),
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -211,49 +213,49 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 		Compiler:   req.Compiler,
 		InputFile:  invocation.cppInFile,
 		OutputFile: invocation.objOutFile,
-		Args:       append(invocation.compilerArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.compilerName)...),
-		IDirs:      append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
+		Args:       append(invocation.compilerArgs, invocation.includeDirs.AsIncArgs(invocation.compilerName)...),
+		IDirs:      append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includeDirs.AsCompilerArgs()...),
 	}
 
 	bytes, _ := json.Marshal(&pchinvocation)
-	common.WriteFile(common.ReplaceFileExt(invocation.objOutFile,".nocc-pch"), bytes, invocation.uid, invocation.gid)
+	common.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes, invocation.uid, invocation.gid)
 
 	return response
 }
 
 func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonSockResponse, error) {
-	       if len(daemon.remoteConnections) == 0 {
-	               return nil, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers")
-	       }
+	if len(daemon.remoteConnections) == 0 {
+		return nil, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers")
+	}
 
-		   remote := daemon.chooseRemoteConnectionForCppCompilation(invocation.cppInFile)
+	remote := daemon.chooseRemoteConnectionForCppCompilation(invocation.cppInFile)
 
-		   invocation.summary.remoteHost = remote.remoteHost
+	invocation.summary.remoteHost = remote.remoteHost
 
-		   if remote.isUnavailable {
-		       return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
-		   }
+	if remote.isUnavailable {
+		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
+	}
 
-		   daemon.mu.Lock()
-		   daemon.activeInvocations[invocation.sessionID] = invocation
-		   daemon.mu.Unlock()
-   
-		   var err error
-		   var reply DaemonSockResponse
-		   reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
-   
-		   daemon.mu.Lock()
-		   delete(daemon.activeInvocations, invocation.sessionID)
-		   daemon.mu.Unlock()
-   
-		   if err != nil { // it's not an error in C++ code, it's a network error or remote failure
-			   return nil, err
-		   }
-   
-		   logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
+	daemon.mu.Lock()
+	daemon.activeInvocations[invocation.sessionID] = invocation
+	daemon.mu.Unlock()
 
-		   return &reply, nil
-		}
+	var err error
+	var reply DaemonSockResponse
+	reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
+
+	daemon.mu.Lock()
+	delete(daemon.activeInvocations, invocation.sessionID)
+	daemon.mu.Unlock()
+
+	if err != nil { // it's not an error in C++ code, it's a network error or remote failure
+		return nil, err
+	}
+
+	logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
+
+	return &reply, nil
+}
 
 func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) DaemonSockResponse {
 	if reason != nil {
@@ -275,18 +277,28 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 	return reply
 }
 
-func (daemon *Daemon) GetOrCreateIncludesCache(compilerName string) *IncludesCache {
+func (daemon *Daemon) GetOrCreateIncludeDirs(compilerName string) *IncludeDirs {
 	daemon.mu.Lock()
-	includesCache := daemon.includesCache[compilerName]
-	if includesCache == nil {
+	includeDirs := daemon.includesDirs[compilerName]
+	if includeDirs == nil {
 		var err error
-		if includesCache, err = MakeIncludesCache(compilerName); err != nil {
+		includeDirs := MakeIncludeDirs()
+		// Regular expression to match "++-" followed by digits
+		re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
+		if re.MatchString(compilerName) {
+			err = includeDirs.GetDefaultIncludeDirsOnLocal(compilerName, "c++")
+		} else {
+			err = includeDirs.GetDefaultIncludeDirsOnLocal(compilerName, "c")
+		}
+
+		if err != nil {
 			logClient.Error("failed to calc default include dirs for", compilerName, err)
 		}
-		daemon.includesCache[compilerName] = includesCache
+
+		daemon.includesDirs[compilerName] = &includeDirs
 	}
 	daemon.mu.Unlock()
-	return includesCache
+	return includeDirs
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {

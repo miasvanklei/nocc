@@ -128,7 +128,7 @@ func (deps *DepCmdFlags) calcOutputDepFileName(invocation *Invocation) string {
 // calcDepListFromHFiles fills DepFileTarget.TargetDepList
 func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []*IncludedFile) []string {
 	if deps.flagMMD {
-		hFiles = deps.filterOutSystemHFiles(invocation.includesCache.defIDirs, hFiles)
+		hFiles = deps.filterOutSystemHFiles(invocation.includeDirs, hFiles)
 	}
 
 	processPwd, _ := os.Getwd()
@@ -148,7 +148,7 @@ func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []
 	return depList
 }
 
-func (deps *DepCmdFlags) filterOutSystemHFiles(compilerDefIDirs IncludeDirs, hFiles []*IncludedFile) []*IncludedFile {
+func (deps *DepCmdFlags) filterOutSystemHFiles(compilerDefIDirs *IncludeDirs, hFiles []*IncludedFile) []*IncludedFile {
 	userHFiles := make([]*IncludedFile, 0)
 
 	for _, hFile := range hFiles {

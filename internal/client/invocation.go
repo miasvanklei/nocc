@@ -52,8 +52,8 @@ type Invocation struct {
 	compilerStderr   []byte
 	compilerDuration int32
 
-	summary       *InvocationSummary
-	includesCache *IncludesCache // = Daemon.includesCache[compilerName]
+	summary     *InvocationSummary
+	includeDirs *IncludeDirs
 }
 
 func isSourceFileName(fileName string) bool {
@@ -141,9 +141,9 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 					i++
 				}
 			} else if arg == "-nostdinc" {
-				invocation.includesCache.defIDirs.stdinc = true
+				invocation.includeDirs.stdinc = true
 			} else if arg == "-nostdinc++" {
-				invocation.includesCache.defIDirs.stdincxx = true
+				invocation.includeDirs.stdincxx = true
 			} else if arg == "-I-" || arg == "-E" ||
 				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
@@ -221,7 +221,7 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		compilerArgs:  make([]string, 0, len(req.CmdLine)),
 		compilerIDirs: MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
-		includesCache: daemon.GetOrCreateIncludesCache(req.Compiler),
+		includeDirs:   daemon.GetOrCreateIncludeDirs(req.Compiler),
 	}
 
 	return invocation

@@ -94,7 +94,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	addHFile := func(hFileName string, searchForPch bool) error {
 		if searchForPch {
-			pchFile, _ = fillSizeAndMTime(hFileName + ".nocc-pch")
+			pchFile, _ = fillSizeAndMTime(common.ReplaceFileExt(hFileName, ".nocc-pch"))
 		}
 		hFile, err := fillSizeAndMTime(hFileName)
 		if err != nil {
@@ -114,74 +114,6 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	cppFile, err = fillSizeAndMTime(cppInFileAbs)
 	return
-}
-
-// GetDefaultIncludeDirsOnLocal retrieves default include dirs on a local machine.
-// This is done by -Wp,-v option for a no input file.
-// This result is cached once nocc-daemon is started.
-func GetDefaultIncludeDirsOnLocal(compileName string, lang string) (IncludeDirs, error) {
-	compilerWpCommand := exec.Command(compileName, "-Wp,-v", "-x", lang, "/dev/null", "-fsyntax-only")
-	var compilerWpStderr bytes.Buffer
-	compilerWpCommand.Stderr = &compilerWpStderr
-	if err := compilerWpCommand.Run(); err != nil {
-		return IncludeDirs{}, err
-	}
-
-	return parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr.String()), nil
-}
-
-func GetDefaultCxxIncludeDirsOnLocal(compilerName string) (IncludeDirs, error) {
-	return GetDefaultIncludeDirsOnLocal(compilerName, "c++")
-}
-
-func GetDefaultCIncludeDirsOnLocal(cName string) (IncludeDirs, error) {
-	return GetDefaultIncludeDirsOnLocal(cName, "c")
-}
-
-// parseCompilerDefaultIncludeDirsFromWpStderr parses output of a C++ compiler with -Wp,-v option.
-func parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr string) IncludeDirs {
-	const (
-		dirsIStart      = "#include <...>"
-		dirsIquoteStart = "#include \"...\""
-		dirsEnd         = "End of search list"
-
-		stateUnknown      = 0
-		stateInDirsIquote = 1
-		stateInDirsI      = 2
-	)
-
-	state := stateUnknown
-	defIncludeDirs := MakeIncludeDirs()
-	for _, line := range strings.Split(compilerWpStderr, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, dirsIquoteStart) {
-			state = stateInDirsIquote
-		} else if strings.HasPrefix(line, dirsIStart) {
-			state = stateInDirsI
-		} else if strings.HasPrefix(line, dirsEnd) {
-			return defIncludeDirs
-		} else if strings.HasPrefix(line, "/") {
-			if strings.HasSuffix(line, "(framework directory)") {
-				continue
-			}
-			switch state {
-			case stateInDirsIquote:
-				defIncludeDirs.dirsIquote = append(defIncludeDirs.dirsIquote, line)
-			case stateInDirsI:
-				if strings.HasPrefix(line, "/usr/") || strings.HasPrefix(line, "/Library/") {
-					normalizedPath, err := filepath.Abs(line)
-					if err != nil {
-						logClient.Error("can't normalize path:", line)
-						continue
-					}
-					defIncludeDirs.dirsIsystem = append(defIncludeDirs.dirsIsystem, normalizedPath)
-				} else {
-					defIncludeDirs.dirsI = append(defIncludeDirs.dirsI, line)
-				}
-			}
-		}
-	}
-	return defIncludeDirs
 }
 
 func extractIncludesFromCompilerMStdout(compilerMStdout []byte, cppInFile string) []string {
