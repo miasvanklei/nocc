@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"strings"
 
+	sdaemon "github.com/coreos/go-systemd/v22/daemon"
 	"nocc/internal/client"
 	"nocc/internal/common"
-	sdaemon "github.com/coreos/go-systemd/v22/daemon"
 )
 
 func failedStart(err any) {

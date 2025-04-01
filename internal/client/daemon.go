@@ -37,8 +37,8 @@ const (
 // `nocc-daemon` quits in 15 seconds after it stops receiving new connections.
 // (the next `nocc` invocation will spawn the daemon again)
 type Daemon struct {
-	startTime            time.Time
-	quitDaemonChan       chan int
+	startTime      time.Time
+	quitDaemonChan chan int
 
 	clientID     string
 	hostUserName string
@@ -87,17 +87,17 @@ func detectHostUserName() string {
 
 func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalCxxProcesses int64) (*Daemon, error) {
 	daemon := &Daemon{
-		startTime:            time.Now(),
-		quitDaemonChan:       make(chan int),
-		clientID:             detectClientID(),
-		hostUserName:         detectHostUserName(),
-		remoteConnections:    make([]*RemoteConnection, len(remoteNoccHosts)),
-		remoteNoccHosts:      remoteNoccHosts,
-		socksProxyAddr:       socksProxyAddr,
-		localCxxThrottle:     make(chan struct{}, maxLocalCxxProcesses),
-		disableLocalCxx:      maxLocalCxxProcesses == 0,
-		activeInvocations:    make(map[uint32]*Invocation, 300),
-		includesCache:        make(map[string]*IncludesCache, 1),
+		startTime:         time.Now(),
+		quitDaemonChan:    make(chan int),
+		clientID:          detectClientID(),
+		hostUserName:      detectHostUserName(),
+		remoteConnections: make([]*RemoteConnection, len(remoteNoccHosts)),
+		remoteNoccHosts:   remoteNoccHosts,
+		socksProxyAddr:    socksProxyAddr,
+		localCxxThrottle:  make(chan struct{}, maxLocalCxxProcesses),
+		disableLocalCxx:   maxLocalCxxProcesses == 0,
+		activeInvocations: make(map[uint32]*Invocation, 300),
+		includesCache:     make(map[string]*IncludesCache, 1),
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -175,7 +175,7 @@ func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason er
 
 func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
 	invocation := CreateInvocation(daemon, req)
-	invocation.ParseCmdLineInvocation(daemon, req.Cwd, req.CmdLine)
+	invocation.ParseCmdLineInvocation(daemon, req.CmdLine)
 
 	switch invocation.invokeType {
 	default:
@@ -204,7 +204,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 			return daemon.FallbackToLocalCxx(req, fmt.Errorf("failed to save pch file: %v", err))
 		}
 
-		invocation.includesCache.AddHFileInfo(ownPch.OwnPchFile, fileSize, ownPch.PchHash, []string{})
+		invocation.includesCache.AddHFileInfo(ownPch.OwnPchFile, fileSize, ownPch.PchHash)
 		logClient.Info(0, "saved pch file", fileSize, "bytes to", ownPch.OwnPchFile)
 
 		if !daemon.areAllRemotesAvailable() {
@@ -235,7 +235,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 
 		var err error
 		var reply DaemonSockResponse
-		reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, req.Cwd, invocation, remote)
+		reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
 
 		daemon.mu.Lock()
 		delete(daemon.activeInvocations, invocation.sessionID)

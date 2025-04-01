@@ -21,7 +21,7 @@ func GenerateOwnPch(daemon *Daemon, cwd string, invocation *Invocation) (*common
 	}
 	_ = os.Remove(ownPch.OwnPchFile) // if a previous version exists
 
-	hFiles, inHFile, err := invocation.CollectDependentIncludes(cwd)
+	hFiles, inHFile, err := CollectDependentIncludes(invocation)
 	if err != nil {
 		return nil, err
 	}

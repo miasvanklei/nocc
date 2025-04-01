@@ -63,3 +63,37 @@ func GetFileSHA256(filePath string) (SHA256, error) {
 	}
 	return MakeSHA256Struct(hasher), nil
 }
+
+// CalcSHA256OfFile reads the opened file up to end and returns its sha256 and contents.
+func CalcSHA256OfFile(file *os.File, fileSize int64, preallocatedBuf []byte) (SHA256, []byte, error) {
+	var buffer []byte
+	if fileSize > int64(len(preallocatedBuf)) {
+		buffer = make([]byte, fileSize)
+	} else {
+		buffer = preallocatedBuf[:fileSize]
+	}
+	_, err := io.ReadFull(file, buffer)
+	if err != nil {
+		return SHA256{}, nil, err
+	}
+
+	hasher := sha256.New()
+	_, _ = hasher.Write(buffer)
+	return MakeSHA256Struct(hasher), buffer, nil
+}
+
+// CalcSHA256OfFileName is like CalcSHA256OfFile but for a file name, not descriptor.
+func CalcSHA256OfFileName(fileName string, preallocatedBuf []byte) (SHA256, []byte, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return SHA256{}, nil, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return SHA256{}, nil, err
+	}
+
+	return CalcSHA256OfFile(file, stat.Size(), preallocatedBuf)
+}

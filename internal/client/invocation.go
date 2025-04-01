@@ -30,6 +30,8 @@ type Invocation struct {
 	createTime time.Time // used for local timeout
 	sessionID  uint32    // incremental while a daemon is alive
 
+	cwd string // working directory, where nocc was launched
+
 	// cmdLine is parsed to the following fields:
 	cppInFile  string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
@@ -79,7 +81,7 @@ func pathAbs(cwd string, relPath string) string {
 	return filepath.Join(cwd, relPath)
 }
 
-func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cwd string, cmdLine []string) {
+func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []string) {
 	parseArgFile := func(key string, arg string, argIndex *int) (string, bool) {
 		if arg == key { // -I /path
 			if *argIndex+1 < len(cmdLine) {
@@ -118,26 +120,23 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cwd string,
 		}
 		if arg[0] == '-' {
 			if oFile, ok := parseArgFile("-o", arg, &i); ok {
-				invocation.objOutFile = pathAbs(cwd, oFile)
+				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
 			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
-				invocation.cxxIDirs.dirsI = append(invocation.cxxIDirs.dirsI, pathAbs(cwd, dir))
+				invocation.cxxIDirs.dirsI = append(invocation.cxxIDirs.dirsI, pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-iquote", arg, &i); ok {
-				invocation.cxxIDirs.dirsIquote = append(invocation.cxxIDirs.dirsIquote, pathAbs(cwd, dir))
+				invocation.cxxIDirs.dirsIquote = append(invocation.cxxIDirs.dirsIquote, pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
-				invocation.cxxIDirs.dirsIsystem = append(invocation.cxxIDirs.dirsIsystem, pathAbs(cwd, dir))
+				invocation.cxxIDirs.dirsIsystem = append(invocation.cxxIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
 				continue
 			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
-				absIFile := pathAbs(cwd, iFile)
+				absIFile := pathAbs(invocation.cwd, iFile)
 				invocation.cxxIDirs.filePCH = &absIFile
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
-				invocation.cxxIDirs.filesI = append(invocation.cxxIDirs.filesI, pathAbs(cwd, iFile))
+				invocation.cxxIDirs.filesI = append(invocation.cxxIDirs.filesI, pathAbs(invocation.cwd, iFile))
 				continue
-			} else if arg == "-march=native" {
-				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
-				return
 			} else if arg == "-nostdinc" {
 				invocation.includesCache.defIDirs.stdinc = true
 			} else if arg == "-nostdinc++" {
@@ -146,17 +145,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cwd string,
 				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if arg == "-isysroot" {
-				// an exception for local development when "remote" is also local, but generally unsupported yet
-				if len(daemon.remoteConnections) == 1 && daemon.remoteConnections[0].remoteHost == "127.0.0.1" {
-					invocation.cxxArgs = append(invocation.cxxArgs, arg, cmdLine[i+1])
-					i++
-					continue
-				}
-				invocation.err = fmt.Errorf("unsupported option: %s", arg)
-				return
 			} else if mfFile := parseArgStr("-MF", arg, &i); mfFile != "" {
-				invocation.depsFlags.SetCmdFlagMF(pathAbs(cwd, mfFile))
+				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 				continue
 			} else if strArg := parseArgStr("-MT", arg, &i); strArg != "" {
 				invocation.depsFlags.SetCmdFlagMT(strArg)
@@ -185,7 +175,10 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cwd string,
 				invocation.cxxArgs = append(invocation.cxxArgs, "-Xclang", xArg)
 				i++
 				continue
-			}
+			} else if arg == "-march=native" {
+				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
+				return
+			} 
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
@@ -220,6 +213,7 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		gid: req.Gid,
 		createTime:    time.Now(),
 		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
+		cwd:           req.Cwd,
 		cxxName:       req.Compiler,
 		cxxArgs:       make([]string, 0, len(req.CmdLine)),
 		cxxIDirs:      MakeIncludeDirs(),
@@ -230,23 +224,13 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 	return invocation
 }
 
-// CollectDependentIncludes finds dependencies for an input .cpp file.
-// "dependencies" are typically all reachable .h files at any level, and probably precompiled headers.
-// There are two modes of finding dependencies:
-// 1. Natively: invoke "cxx -M" (it invokes preprocessor only).
-// 2. Own includes parser, which works much faster and theoretically should return the same (or a bit more) results.
-func (invocation *Invocation) CollectDependentIncludes(cwd string) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
-
-	return CollectDependentIncludes(invocation, cwd)
-}
-
 // GetCppInFileAbs returns an absolute path to invocation.cppInFile.
 // (remember, that it's stored as-is from cmd line)
-func (invocation *Invocation) GetCppInFileAbs(cwd string) string {
+func (invocation *Invocation) GetCppInFileAbs() string {
 	if invocation.cppInFile[0] == '/' {
 		return invocation.cppInFile
 	}
-	return path.Join(cwd, invocation.cppInFile)
+	return path.Join(invocation.cwd, invocation.cppInFile)
 }
 
 func (invocation *Invocation) DoneRecvObj(err error) {

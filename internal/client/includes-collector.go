@@ -3,9 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,8 +40,8 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // Since cxx knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
-func CollectDependentIncludes(invocation *Invocation, cwd string) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
-	cppInFileAbs := invocation.GetCppInFileAbs(cwd)
+func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
+	cppInFileAbs := invocation.GetCppInFileAbs()
 
 	cxxCmdLine := make([]string, 0, len(invocation.cxxArgs)+2*invocation.cxxIDirs.Count()+4)
 	cxxCmdLine = append(cxxCmdLine, invocation.cxxArgs...)
@@ -63,9 +61,9 @@ func CollectDependentIncludes(invocation *Invocation, cwd string) (hFiles []*Inc
 		}
 	}
 
-	cxxMCommand := exec.Command(invocation.cxxName, cxxCmdLine...)
-	cxxMCommand.Dir = cwd
 	var cxxMStdout, cxxMStderr bytes.Buffer
+	cxxMCommand := exec.Command(invocation.cxxName, cxxCmdLine...)
+	cxxMCommand.Dir = invocation.cwd
 	cxxMCommand.Stdout = &cxxMStdout
 	cxxMCommand.Stderr = &cxxMStderr
 	if err = cxxMCommand.Run(); err != nil {
@@ -88,7 +86,7 @@ func CollectDependentIncludes(invocation *Invocation, cwd string) (hFiles []*Inc
 			stat, err = file.Stat()
 			if err == nil {
 				dest.fileSize = stat.Size()
-				dest.fileSHA256, _, err = CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
+				dest.fileSHA256, _, err = common.CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
 			}
 			_ = file.Close()
 		}
@@ -147,40 +145,6 @@ func GetDefaultCIncludeDirsOnLocal(cName string) (IncludeDirs, error) {
 	return GetDefaultIncludeDirsOnLocal(cName, "c")
 }
 
-// CalcSHA256OfFile reads the opened file up to end and returns its sha256 and contents.
-func CalcSHA256OfFile(file *os.File, fileSize int64, preallocatedBuf []byte) (common.SHA256, []byte, error) {
-	var buffer []byte
-	if fileSize > int64(len(preallocatedBuf)) {
-		buffer = make([]byte, fileSize)
-	} else {
-		buffer = preallocatedBuf[:fileSize]
-	}
-	_, err := io.ReadFull(file, buffer)
-	if err != nil {
-		return common.SHA256{}, nil, err
-	}
-
-	hasher := sha256.New()
-	_, _ = hasher.Write(buffer)
-	return common.MakeSHA256Struct(hasher), buffer, nil
-}
-
-// CalcSHA256OfFileName is like CalcSHA256OfFile but for a file name, not descriptor.
-func CalcSHA256OfFileName(fileName string, preallocatedBuf []byte) (common.SHA256, []byte, error) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		return common.SHA256{}, nil, err
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		return common.SHA256{}, nil, err
-	}
-
-	return CalcSHA256OfFile(file, stat.Size(), preallocatedBuf)
-}
-
 // LocateOwnPchFile finds a .nocc-pch file next to .h.
 // The results are cached: if a file doesn't exist, it won't be looked up again until daemon is alive.
 func LocateOwnPchFile(hFileName string, includesCache *IncludesCache) *IncludedFile {
@@ -195,13 +159,13 @@ func LocateOwnPchFile(hFileName string, includesCache *IncludesCache) *IncludedF
 		if stat, err := os.Stat(ownPchFile); err == nil {
 			ownPch, err := common.ParseOwnPchFile(ownPchFile)
 			if err == nil {
-				includesCache.AddHFileInfo(ownPchFile, stat.Size(), ownPch.PchHash, []string{})
+				includesCache.AddHFileInfo(ownPchFile, stat.Size(), ownPch.PchHash,)
 			} else {
 				logClient.Error(err)
-				includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{}, []string{})
+				includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{})
 			}
 		} else {
-			includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{}, []string{})
+			includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{})
 		}
 		pchCached, _ = includesCache.GetHFileInfo(ownPchFile)
 	}
@@ -265,12 +229,6 @@ func extractIncludesFromCxxMStdout(cxxMStdout []byte, cppInFile string) []string
 	hFilesNames := make([]string, 0, 16)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == "#pragma" && scanner.Scan() && scanner.Text() == "GCC" && scanner.Scan() && scanner.Text() == "pch_preprocess" && scanner.Scan() {
-			pchFileName := strings.Trim(scanner.Text(), "\"")
-			pchFileName, _ = filepath.Abs(pchFileName)
-			hFilesNames = append(hFilesNames, pchFileName)
-			continue
-		}
 
 		if line == "\\" || line == cppInFile || strings.HasSuffix(line, ".o") || strings.HasSuffix(line, ".o:") {
 			continue

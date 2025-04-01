@@ -10,13 +10,13 @@ import (
 // CompileCppRemotely executes all steps of remote compilation (see comments inside the function).
 // On success, it saves the resulting .o file — the same as if compiled locally.
 // It's called within a daemon for every Invocation of type invokedForCompilingCpp.
-func CompileCppRemotely(daemon *Daemon, cwd string, invocation *Invocation, remote *RemoteConnection) (exitCode int, stdout []byte, stderr []byte, err error) {
+func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection,  invocation *Invocation) (exitCode int, stdout []byte, stderr []byte, err error) {
 	invocation.wgRecv.Add(1)
 
 	// 1. For an input .cpp file, find all dependent .h/.nocc-pch/etc. that are required for compilation
-	hFiles, cppFile, err := invocation.CollectDependentIncludes(cwd)
+	hFiles, cppFile, err := CollectDependentIncludes(invocation)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("failed to collect depencies: %v", err)
+		return 0, nil, nil, fmt.Errorf("failed to collect dependencies: %v", err)
 	}
 	invocation.summary.nIncludes = len(hFiles)
 	invocation.summary.AddTiming("collected_includes")
@@ -43,7 +43,7 @@ func CompileCppRemotely(daemon *Daemon, cwd string, invocation *Invocation, remo
 
 	// 2. Send sha256 of the .cpp and all dependencies to the remote.
 	// The remote returns indexes that are missing (needed to be uploaded).
-	fileIndexesToUpload, err := remote.StartCompilationSession(invocation, cwd, requiredFiles)
+	fileIndexesToUpload, err := remote.StartCompilationSession(invocation, requiredFiles)
 	if err != nil {
 		return 0, nil, nil, err
 	}

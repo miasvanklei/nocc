@@ -10,7 +10,6 @@ import (
 type includeCachedHFile struct {
 	fileSize       int64         // size of file; -1 means that a file doesn't exist
 	fileSHA256     common.SHA256 // hash of contents (but for pch it's a combined hash of dependencies)
-	nestedIncludes []string      // [ /abs/path/to/sub/included_file.h, ... ] in order of appearance
 }
 
 // IncludesCache represents a structure that is kept in memory while the daemon is running.
@@ -20,7 +19,7 @@ type IncludesCache struct {
 	defIDirs IncludeDirs
 	// how #include <math.h> is resolved to an /actual/path/to/math.h
 	includesResolve map[string]string
-	// properties of /actual/path/to/math.h (file/sha256 and nested #include list)
+	// properties of /actual/path/to/math.h (file/sha256)
 	hFilesInfo map[string]*includeCachedHFile
 
 	mu sync.RWMutex
@@ -73,9 +72,9 @@ func (incCache *IncludesCache) GetHFileInfo(hFileName string) (hFileCached *incl
 	return
 }
 
-func (incCache *IncludesCache) AddHFileInfo(hFileName string, fileSize int64, fileSHA256 common.SHA256, nestedIncludes []string) {
+func (incCache *IncludesCache) AddHFileInfo(hFileName string, fileSize int64, fileSHA256 common.SHA256) {
 	incCache.mu.Lock()
-	incCache.hFilesInfo[hFileName] = &includeCachedHFile{fileSize, fileSHA256, nestedIncludes}
+	incCache.hFilesInfo[hFileName] = &includeCachedHFile{fileSize, fileSHA256}
 	incCache.mu.Unlock()
 }
 
