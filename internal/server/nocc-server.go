@@ -14,6 +14,7 @@ import (
 
 	"nocc/internal/common"
 	"nocc/pb"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -27,18 +28,18 @@ type NoccServer struct {
 	pb.UnimplementedCompilationServiceServer
 	GRPCServer *grpc.Server
 
-	Cron  *Cron
+	Cron *Cron
 
-	ActiveClients  *ClientsStorage
-	CxxLauncher    *CxxLauncher
-	PchCompilation *PchCompilation
+	ActiveClients    *ClientsStorage
+	CompilerLauncher *CompilerLauncher
+	PchCompilation   *PchCompilation
 
 	SystemHeaders *SystemHeadersCache
 	SrcFileCache  *SrcFileCache
 	ObjFileCache  *ObjFileCache
 }
 
-func launchCxxOnServerOnReadySessions(noccServer *NoccServer, client *Client) {
+func launchCompilerOnServerOnReadySessions(noccServer *NoccServer, client *Client) {
 	for _, session := range client.GetSessionsNotStartedCompilation() {
 		session.StartCompilingObjIfPossible(noccServer)
 	}
@@ -109,13 +110,13 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	// then we don't need to upload files from the client (and even don't need to link them from src cache)
 	// respond that we are waiting 0 files, and the client would immediately request for a compiled obj
 	// it's mostly a moment of optimization: avoid calling os.Link from src cache to working dir
-	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(in.CxxName, in.CxxArgs, session.files, in.CppInFile)
+	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(in.Compiler, in.Args, session.files, in.InputFile)
 	if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
 		session.objCacheExists = true
-		session.objOutFile = pathInObjCache // stream back this file directly
+		session.OutputFile = pathInObjCache // stream back this file directly
 		session.compilationStarted = 1      // client.GetSessionsNotStartedCompilation() will not return it
 
-		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.CppInFile)
+		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.InputFile)
 		client.RegisterCreatedSession(session)
 		session.PushToClientReadyChannel()
 
@@ -124,7 +125,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 	// otherwise, we detect files that don't exist in src cache and request a client to upload them
 	// before restoring from src cache, ensure that all client dirs structure is mirrored to workingDir
-	session.PrepareServerCxxCmdLine(s, in.Cwd, in.CxxArgs, in.CxxIDirs)
+	session.PrepareServerCompilerCmdLine(s, in.Cwd, in.Args, in.IDirs)
 	client.MkdirAllForSession(session)
 
 	// here we deal with concurrency:
@@ -183,9 +184,9 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 		}
 	}
 
-	logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "waiting", len(fileIndexesToUpload), "uploads", in.CppInFile)
+	logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "waiting", len(fileIndexesToUpload), "uploads", in.InputFile)
 	client.RegisterCreatedSession(session)
-	launchCxxOnServerOnReadySessions(s, client) // other sessions could also be waiting for files in src-cache
+	launchCompilerOnServerOnReadySessions(s, client) // other sessions could also be waiting for files in src-cache
 
 	return &pb.StartCompilationSessionReply{
 		FileIndexesToUpload: fileIndexesToUpload,
@@ -250,7 +251,7 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 
 		file.state = fsFileStateUploaded
 		logServer.Info(1, "fs uploading->uploaded", "sessionID", session.sessionID, clientFileName)
-		launchCxxOnServerOnReadySessions(s, session.client) // other sessions could also be waiting for this file, we should check all
+		launchCompilerOnServerOnReadySessions(s, session.client) // other sessions could also be waiting for this file, we should check all
 		_ = stream.Send(&pb.UploadFileReply{})
 		_ = s.SrcFileCache.SaveFileToCache(file.serverFileName, path.Base(file.serverFileName), file.fileSHA256, file.fileSize)
 
@@ -292,22 +293,22 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 		case session := <-client.chanReadySessions:
 			client.lastSeen = time.Now()
 
-			if session.cxxExitCode != 0 {
+			if session.compilerExitCode != 0 {
 				err := stream.Send(&pb.RecvCompiledObjChunkReply{
-					SessionID:   session.sessionID,
-					CxxExitCode: session.cxxExitCode,
-					CxxStdout:   session.cxxStdout,
-					CxxStderr:   session.cxxStderr,
-					CxxDuration: session.cxxDuration,
+					SessionID:        session.sessionID,
+					ExitCode:         session.compilerExitCode,
+					CompilerStdout:   session.compilerStdout,
+					CompilerStderr:   session.compilerStderr,
+					CompilerDuration: session.compilerDuration,
 				})
 				if err != nil {
 					return onError(session.sessionID, "can't send obj non-0 reply sessionID %d clientID %s %v", session.sessionID, client.clientID, err)
 				}
 			} else {
-				logServer.Info(0, "send obj file", "sessionID", session.sessionID, "clientID", client.clientID, "cxxDuration", session.cxxDuration, session.objOutFile)
+				logServer.Info(0, "send obj file", "sessionID", session.sessionID, "clientID", client.clientID, "compilerDuration", session.compilerDuration, session.OutputFile)
 				err := sendObjFileByChunks(stream, chunkBuf, session)
 				if err != nil {
-					return onError(session.sessionID, "can't send obj file %s sessionID %d clientID %s %v", session.objOutFile, session.sessionID, client.clientID, err)
+					return onError(session.sessionID, "can't send obj file %s sessionID %d clientID %s %v", session.OutputFile, session.sessionID, client.clientID, err)
 				}
 			}
 

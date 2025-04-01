@@ -49,7 +49,7 @@ func receiveUploadedFileByChunks(noccServer *NoccServer, stream pb.CompilationSe
 // sendObjFileByChunks is an actual implementation of piping a local server file to a client stream.
 // See client.receiveObjFileByChunks.
 func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServer, chunkBuf []byte, session *Session) error {
-	fd, err := os.Open(session.objOutFile)
+	fd, err := os.Open(session.OutputFile)
 	if err != nil {
 		return err
 	}
@@ -70,10 +70,10 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 		}
 		err = stream.Send(&pb.RecvCompiledObjChunkReply{
 			SessionID:   session.sessionID,
-			CxxExitCode: session.cxxExitCode,
-			CxxStdout:   session.cxxStdout,
-			CxxStderr:   session.cxxStderr,
-			CxxDuration: session.cxxDuration,
+			ExitCode: session.compilerExitCode,
+			CompilerStdout:   session.compilerStdout,
+			CompilerStderr:   session.compilerStderr,
+			CompilerDuration: session.compilerDuration,
 			FileSize:    stat.Size(),
 			ChunkBody:   chunkBuf[:n],
 		})

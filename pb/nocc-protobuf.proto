@@ -14,7 +14,7 @@ service CompilationService {
 }
 
 message FileMetadata {
-    string ClientFileName = 1;
+    string FileName = 1;
     int64 FileSize = 2;
     fixed64 SHA256_B0_7 = 10;
     fixed64 SHA256_B8_15 = 11;
@@ -24,7 +24,6 @@ message FileMetadata {
 
 message StartClientRequest {
     string ClientID = 1;
-    string HostUserName = 2;
     string ClientVersion = 3;
 }
 
@@ -35,10 +34,10 @@ message StartCompilationSessionRequest {
     string ClientID = 1;
     uint32 SessionID = 2;
     string Cwd = 3;
-    string CppInFile = 10;
-    string CxxName = 11;
-    repeated string CxxArgs = 12;
-    repeated string CxxIDirs = 13;
+    string InputFile = 10;
+    string Compiler = 11;
+    repeated string Args = 12;
+    repeated string IDirs = 13;
     repeated FileMetadata RequiredFiles = 14;
 }
 
@@ -64,10 +63,10 @@ message OpenReceiveStreamRequest {
 
 message RecvCompiledObjChunkReply {
     uint32 SessionID = 1;
-    int32 CxxExitCode = 2;
-    bytes CxxStdout = 3;
-    bytes CxxStderr = 4;
-    int32 CxxDuration = 5;
+    int32 ExitCode = 2;
+    bytes CompilerStdout = 3;
+    bytes CompilerStderr = 4;
+    int32 CompilerDuration = 5;
     int64 FileSize = 6;
     bytes ChunkBody = 7;
 }

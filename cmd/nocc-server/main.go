@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"path"
 	"os"
+	"path"
 	"runtime"
 	"time"
 
 	"nocc/internal/common"
 	"nocc/internal/server"
 	"nocc/pb"
+
 	"google.golang.org/grpc"
 )
 
@@ -66,8 +67,8 @@ func main() {
 		"src-cache-limit", "")
 	objCacheLimit := common.CmdEnvInt("Compiled obj cache limit, in bytes, default 16G.", 16*1024*1024*1024,
 		"obj-cache-limit", "")
-	maxParallelCxx := common.CmdEnvInt("Max amount of C++ compiler processes launched in parallel, other ready sessions are waiting in a queue.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
-		"max-parallel-cxx", "")
+	maxParallelCompiler := common.CmdEnvInt("Max amount of compiler processes launched in parallel, other ready sessions are waiting in a queue.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
+		"max-parallel-compiler", "")
 
 	common.ParseCmdFlagsCombiningWithEnv()
 
@@ -87,9 +88,9 @@ func main() {
 		failedStart("Failed to init clients hashtable", err)
 	}
 
-	s.CxxLauncher, err = server.MakeCxxLauncher(*maxParallelCxx)
+	s.CompilerLauncher, err = server.MakeCompilerLauncher(*maxParallelCompiler)
 	if err != nil {
-		failedStart("Failed to init cxx launcher", err)
+		failedStart("Failed to init compiler launcher", err)
 	}
 
 	s.SystemHeaders, err = server.MakeSystemHeadersCache()
@@ -102,7 +103,7 @@ func main() {
 		failedStart("Failed to init src file cache", err)
 	}
 
-	s.ObjFileCache, err = server.MakeObjFileCache(prepareEmptyDir(objStoreDir, "obj-cache"), prepareEmptyDir(objStoreDir, "cxx-out"), *objCacheLimit)
+	s.ObjFileCache, err = server.MakeObjFileCache(prepareEmptyDir(objStoreDir, "obj-cache"), prepareEmptyDir(objStoreDir, "compiler-out"), *objCacheLimit)
 	if err != nil {
 		failedStart("Failed to init obj file cache", err)
 	}

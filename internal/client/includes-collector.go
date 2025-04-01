@@ -24,53 +24,53 @@ type IncludedFile struct {
 
 func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 	return &pb.FileMetadata{
-		ClientFileName: file.fileName,
-		FileSize:       file.fileSize,
-		SHA256_B0_7:    file.fileSHA256.B0_7,
-		SHA256_B8_15:   file.fileSHA256.B8_15,
-		SHA256_B16_23:  file.fileSHA256.B16_23,
-		SHA256_B24_31:  file.fileSHA256.B24_31,
+		FileName:      file.fileName,
+		FileSize:      file.fileSize,
+		SHA256_B0_7:   file.fileSHA256.B0_7,
+		SHA256_B8_15:  file.fileSHA256.B8_15,
+		SHA256_B16_23: file.fileSHA256.B16_23,
+		SHA256_B24_31: file.fileSHA256.B24_31,
 	}
 }
 
-// CollectDependentIncludes collects all dependencies for an input .cpp file USING `cxx -M`.
-// It launches cxx locally — but only the preprocessor, not compilation (since compilation will be done remotely).
-// The -M flag of cxx runs the preprocessor and outputs dependencies of the .cpp file.
+// CollectDependentIncludes collects all dependencies for an input .cpp file USING `compiler -M`.
+// It launches compiler locally — but only the preprocessor, not compilation (since compilation will be done remotely).
+// The -M flag of compiler runs the preprocessor and outputs dependencies of the .cpp file.
 // We need dependencies to upload them to remote.
-// Since cxx knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
+// Since compiler knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
 func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
 	cppInFileAbs := invocation.GetCppInFileAbs()
 
-	cxxCmdLine := make([]string, 0, len(invocation.cxxArgs)+2*invocation.cxxIDirs.Count()+4)
-	cxxCmdLine = append(cxxCmdLine, invocation.cxxArgs...)
-	cxxCmdLine = append(cxxCmdLine, invocation.cxxIDirs.AsCxxArgs()...)
-	cxxCmdLine = append(cxxCmdLine, "-o", "-", "-M", cppInFileAbs)
+	compilerCmdLine := make([]string, 0, len(invocation.compilerArgs)+2*invocation.compilerIDirs.Count()+4)
+	compilerCmdLine = append(compilerCmdLine, invocation.compilerArgs...)
+	compilerCmdLine = append(compilerCmdLine, invocation.compilerIDirs.AsCompilerArgs()...)
+	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", cppInFileAbs)
 
 	// drop "-Xclang -emit-pch", as it outputs pch regardless of -M flag
-	for i, arg := range cxxCmdLine {
-		if arg == "-Xclang" && i < len(cxxCmdLine)-1 && cxxCmdLine[i+1] == "-emit-pch" {
-			cxxCmdLine = slices.Delete(cxxCmdLine, i, i+2)
+	for i, arg := range compilerCmdLine {
+		if arg == "-Xclang" && i < len(compilerCmdLine)-1 && compilerCmdLine[i+1] == "-emit-pch" {
+			compilerCmdLine = slices.Delete(compilerCmdLine, i, i+2)
 			break
 		}
 	}
 
-	var cxxMStdout, cxxMStderr bytes.Buffer
-	cxxMCommand := exec.Command(invocation.cxxName, cxxCmdLine...)
-	cxxMCommand.Dir = invocation.cwd
-	cxxMCommand.Stdout = &cxxMStdout
-	cxxMCommand.Stderr = &cxxMStderr
-	if err = cxxMCommand.Run(); err != nil {
+	var compilerMStdout, compilerMStderr bytes.Buffer
+	compilerMCommand := exec.Command(invocation.compilerName, compilerCmdLine...)
+	compilerMCommand.Dir = invocation.cwd
+	compilerMCommand.Stdout = &compilerMStdout
+	compilerMCommand.Stderr = &compilerMStderr
+	if err = compilerMCommand.Run(); err != nil {
 		if err.(*exec.ExitError) != nil {
-			err = fmt.Errorf("%s exited with code %d: %s", invocation.cxxName, cxxMCommand.ProcessState.ExitCode(), cxxMStderr.String())
+			err = fmt.Errorf("%s exited with code %d: %s", invocation.compilerName, compilerMCommand.ProcessState.ExitCode(), compilerMStderr.String())
 		}
 		return
 	}
 
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
 	// We also need size and sha256 for every dependency: we'll use them to check whether they were already uploaded.
-	hFilesNames := extractIncludesFromCxxMStdout(cxxMStdout.Bytes(), cppInFileAbs)
+	hFilesNames := extractIncludesFromCompilerMStdout(compilerMStdout.Bytes(), cppInFileAbs)
 	hFiles = make([]*IncludedFile, 0, len(hFilesNames))
 	preallocatedBuf := make([]byte, 32*1024)
 
@@ -112,7 +112,6 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 		}
 	}
 
-
 	cppFile, err = fillSizeAndMTime(cppInFileAbs)
 	return
 }
@@ -121,26 +120,26 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 // This is done by -Wp,-v option for a no input file.
 // This result is cached once nocc-daemon is started.
 func GetDefaultIncludeDirsOnLocal(compileName string, lang string) (IncludeDirs, error) {
-	cxxWpCommand := exec.Command(compileName, "-Wp,-v", "-x", lang, "/dev/null", "-fsyntax-only")
-	var cxxWpStderr bytes.Buffer
-	cxxWpCommand.Stderr = &cxxWpStderr
-	if err := cxxWpCommand.Run(); err != nil {
+	compilerWpCommand := exec.Command(compileName, "-Wp,-v", "-x", lang, "/dev/null", "-fsyntax-only")
+	var compilerWpStderr bytes.Buffer
+	compilerWpCommand.Stderr = &compilerWpStderr
+	if err := compilerWpCommand.Run(); err != nil {
 		return IncludeDirs{}, err
 	}
 
-	return parseCxxDefaultIncludeDirsFromWpStderr(cxxWpStderr.String()), nil
+	return parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr.String()), nil
 }
 
-func GetDefaultCxxIncludeDirsOnLocal(cxxName string) (IncludeDirs, error) {
-	return GetDefaultIncludeDirsOnLocal(cxxName, "c++")
+func GetDefaultCxxIncludeDirsOnLocal(compilerName string) (IncludeDirs, error) {
+	return GetDefaultIncludeDirsOnLocal(compilerName, "c++")
 }
 
 func GetDefaultCIncludeDirsOnLocal(cName string) (IncludeDirs, error) {
 	return GetDefaultIncludeDirsOnLocal(cName, "c")
 }
 
-// parseCxxDefaultIncludeDirsFromWpStderr parses output of a C++ compiler with -Wp,-v option.
-func parseCxxDefaultIncludeDirsFromWpStderr(cxxWpStderr string) IncludeDirs {
+// parseCompilerDefaultIncludeDirsFromWpStderr parses output of a C++ compiler with -Wp,-v option.
+func parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr string) IncludeDirs {
 	const (
 		dirsIStart      = "#include <...>"
 		dirsIquoteStart = "#include \"...\""
@@ -153,7 +152,7 @@ func parseCxxDefaultIncludeDirsFromWpStderr(cxxWpStderr string) IncludeDirs {
 
 	state := stateUnknown
 	defIncludeDirs := MakeIncludeDirs()
-	for _, line := range strings.Split(cxxWpStderr, "\n") {
+	for _, line := range strings.Split(compilerWpStderr, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, dirsIquoteStart) {
 			state = stateInDirsIquote
@@ -185,9 +184,8 @@ func parseCxxDefaultIncludeDirsFromWpStderr(cxxWpStderr string) IncludeDirs {
 	return defIncludeDirs
 }
 
-
-func extractIncludesFromCxxMStdout(cxxMStdout []byte, cppInFile string) []string {
-	scanner := bufio.NewScanner(bytes.NewReader(cxxMStdout))
+func extractIncludesFromCompilerMStdout(compilerMStdout []byte, cppInFile string) []string {
+	scanner := bufio.NewScanner(bytes.NewReader(compilerMStdout))
 	scanner.Split(bufio.ScanWords)
 	hFilesNames := make([]string, 0, 16)
 	for scanner.Scan() {

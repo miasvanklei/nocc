@@ -33,12 +33,12 @@ type Invocation struct {
 	cwd string // working directory, where nocc was launched
 
 	// cmdLine is parsed to the following fields:
-	cppInFile  string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
-	objOutFile string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
-	cxxName    string      // g++ / clang / etc.
-	cxxArgs    []string    // args like -Wall, -fpch-preprocess and many more, except:
-	cxxIDirs   IncludeDirs // -I / -iquote / -isystem go here
-	depsFlags  DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
+	cppInFile     string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
+	objOutFile    string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
+	compilerName  string      // g++ / clang / etc.
+	compilerArgs  []string    // args like -Wall, -fpch-preprocess and many more, except:
+	compilerIDirs IncludeDirs // -I / -iquote / -isystem go here
+	depsFlags     DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
 	doneRecv    int32 // 1 if o file received or failed receiving; 1 releases wgRecv; see Invocation.DoneRecvObj
@@ -47,13 +47,13 @@ type Invocation struct {
 
 	// when remote compilation starts, the server starts a server.Session (with the same sessionID)
 	// after it finishes, we have these fields filled (and objOutFile saved)
-	cxxExitCode int
-	cxxStdout   []byte
-	cxxStderr   []byte
-	cxxDuration int32
+	compilerExitCode int
+	compilerStdout   []byte
+	compilerStderr   []byte
+	compilerDuration int32
 
 	summary       *InvocationSummary
-	includesCache *IncludesCache // = Daemon.includesCache[cxxName]
+	includesCache *IncludesCache // = Daemon.includesCache[compilerName]
 }
 
 func isSourceFileName(fileName string) bool {
@@ -123,16 +123,16 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
 			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
-				invocation.cxxIDirs.dirsI = append(invocation.cxxIDirs.dirsI, pathAbs(invocation.cwd, dir))
+				invocation.compilerIDirs.dirsI = append(invocation.compilerIDirs.dirsI, pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-iquote", arg, &i); ok {
-				invocation.cxxIDirs.dirsIquote = append(invocation.cxxIDirs.dirsIquote, pathAbs(invocation.cwd, dir))
+				invocation.compilerIDirs.dirsIquote = append(invocation.compilerIDirs.dirsIquote, pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
-				invocation.cxxIDirs.dirsIsystem = append(invocation.cxxIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
+				invocation.compilerIDirs.dirsIsystem = append(invocation.compilerIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
 				continue
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
-				invocation.cxxIDirs.filesI = append(invocation.cxxIDirs.filesI, pathAbs(invocation.cwd, iFile))
+				invocation.compilerIDirs.filesI = append(invocation.compilerIDirs.filesI, pathAbs(invocation.cwd, iFile))
 				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
@@ -175,7 +175,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" {
 					continue // like "-Xclang" doesn't exist
 				}
-				invocation.cxxArgs = append(invocation.cxxArgs, "-Xclang", xArg)
+				invocation.compilerArgs = append(invocation.compilerArgs, "-Xclang", xArg)
 				i++
 				continue
 			} else if arg == "-march=native" {
@@ -190,7 +190,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			invocation.cppInFile = arg
 			continue
 		}
-		invocation.cxxArgs = append(invocation.cxxArgs, arg)
+		invocation.compilerArgs = append(invocation.compilerArgs, arg)
 	}
 
 	if invocation.err != nil {
@@ -217,9 +217,9 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		createTime:    time.Now(),
 		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
 		cwd:           req.Cwd,
-		cxxName:       req.Compiler,
-		cxxArgs:       make([]string, 0, len(req.CmdLine)),
-		cxxIDirs:      MakeIncludeDirs(),
+		compilerName:  req.Compiler,
+		compilerArgs:  make([]string, 0, len(req.CmdLine)),
+		compilerIDirs: MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
 		includesCache: daemon.GetOrCreateIncludesCache(req.Compiler),
 	}

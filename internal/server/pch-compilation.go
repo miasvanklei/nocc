@@ -83,7 +83,7 @@ func (pchCompilation *PchCompilation) CompileOwnPchOnServer(noccServer *NoccServ
 
 	logServer.Info(0, "compiling own pch file", ownPch.PchHash.ToLongHexString(), ownPch.OwnPchFile)
 	cxxCmdLine := pchCompilation.PrepareServerCxxCmdLine(ownPch, rootDir)
-	err = noccServer.CxxLauncher.launchServerCxxForPch(ownPch.CxxName, cxxCmdLine, rootDir)
+	err = noccServer.CompilerLauncher.launchServercompilerForPch(ownPch.CxxName, cxxCmdLine, rootDir)
 	if err != nil {
 		return err
 	}

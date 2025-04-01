@@ -43,46 +43,46 @@ func (dirs *IncludeDirs) Count() int {
 }
 
 func (dirs *IncludeDirs) AsIncArgs(compiler string) []string {
-	cxxIArgs := make([]string, 0, 2)
+	iArgs := make([]string, 0, 2)
 
 	re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
 	if !dirs.stdincxx && re.MatchString(compiler) {
-		cxxIArgs = append(cxxIArgs, "-nostdinc++")
+		iArgs = append(iArgs, "-nostdinc++")
 	}
 
 	if !dirs.stdincxx {
-		cxxIArgs = append(cxxIArgs, "-nostdinc")
+		iArgs = append(iArgs, "-nostdinc")
 	}
 
-	return cxxIArgs
+	return iArgs
 }
 
-func (dirs *IncludeDirs) AsCxxArgs() []string {
-	cxxIArgs := make([]string, 0, 2*dirs.Count())
+func (dirs *IncludeDirs) AsCompilerArgs() []string {
+	iArgs := make([]string, 0, 2*dirs.Count())
 
 	for _, dir := range dirs.dirsI {
-		cxxIArgs = append(cxxIArgs, "-I", dir)
+		iArgs = append(iArgs, "-I", dir)
 	}
 
 	for _, dir := range dirs.dirsIquote {
-		cxxIArgs = append(cxxIArgs, "-iquote", dir)
+		iArgs = append(iArgs, "-iquote", dir)
 	}
 
 	if !dirs.stdinc && !dirs.stdincxx {
 		for _, dir := range dirs.dirsIsystem {
-			cxxIArgs = append(cxxIArgs, "-isystem", dir)
+			iArgs = append(iArgs, "-isystem", dir)
 		}
 	}
 
 	if dirs.filePCH != nil {
-		cxxIArgs = append(cxxIArgs, "-include-pch", *dirs.filePCH)
+		iArgs = append(iArgs, "-include-pch", *dirs.filePCH)
 	}
 
 	for _, file := range dirs.filesI {
-		cxxIArgs = append(cxxIArgs, "-include", file)
+		iArgs = append(iArgs, "-include", file)
 	}
 
-	return cxxIArgs
+	return iArgs
 }
 
 func (dirs *IncludeDirs) MergeWith(other IncludeDirs) {

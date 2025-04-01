@@ -15,7 +15,7 @@ type includeCachedHFile struct {
 // IncludesCache represents a structure that is kept in memory while the daemon is running.
 // It helps reduce hard disk lookups for #include resolving.
 type IncludesCache struct {
-	// default include dirs for current cxxName
+	// default include dirs for current compilerName
 	defIDirs IncludeDirs
 	// how #include <math.h> is resolved to an /actual/path/to/math.h
 	includesResolve map[string]string

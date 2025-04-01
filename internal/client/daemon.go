@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -40,22 +39,21 @@ type Daemon struct {
 	startTime      time.Time
 	quitDaemonChan chan int
 
-	clientID     string
-	hostUserName string
+	clientID string
 
-	listener          *DaemonUnixSockListener
-	remoteConnections []*RemoteConnection
-	remoteNoccHosts   []string
-	socksProxyAddr    string
-	localCxxThrottle  chan struct{}
+	listener              *DaemonUnixSockListener
+	remoteConnections     []*RemoteConnection
+	remoteNoccHosts       []string
+	socksProxyAddr        string
+	localCompilerThrottle chan struct{}
 
-	disableLocalCxx bool
+	disableLocalCompiler bool
 
 	totalInvocations  uint32
 	activeInvocations map[uint32]*Invocation
 	mu                sync.RWMutex
 
-	includesCache map[string]*IncludesCache // map[cxx_name] => cache (support various cxx compilers during a daemon lifetime)
+	includesCache map[string]*IncludesCache // map[compiler_name] => cache (support various compilers during a daemon lifetime)
 }
 
 // detectClientID returns a clientID for current daemon launch.
@@ -77,27 +75,18 @@ func detectClientID() string {
 	return string(b)
 }
 
-func detectHostUserName() string {
-	curUser, err := user.Current()
-	if err != nil {
-		return "unknown"
-	}
-	return curUser.Username
-}
-
-func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalCxxProcesses int64) (*Daemon, error) {
+func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompilerProcesses int64) (*Daemon, error) {
 	daemon := &Daemon{
-		startTime:         time.Now(),
-		quitDaemonChan:    make(chan int),
-		clientID:          detectClientID(),
-		hostUserName:      detectHostUserName(),
-		remoteConnections: make([]*RemoteConnection, len(remoteNoccHosts)),
-		remoteNoccHosts:   remoteNoccHosts,
-		socksProxyAddr:    socksProxyAddr,
-		localCxxThrottle:  make(chan struct{}, maxLocalCxxProcesses),
-		disableLocalCxx:   maxLocalCxxProcesses == 0,
-		activeInvocations: make(map[uint32]*Invocation, 300),
-		includesCache:     make(map[string]*IncludesCache, 1),
+		startTime:             time.Now(),
+		quitDaemonChan:        make(chan int),
+		clientID:              detectClientID(),
+		remoteConnections:     make([]*RemoteConnection, len(remoteNoccHosts)),
+		remoteNoccHosts:       remoteNoccHosts,
+		socksProxyAddr:        socksProxyAddr,
+		localCompilerThrottle: make(chan struct{}, maxLocalcompilerProcesses),
+		disableLocalCompiler:  maxLocalcompilerProcesses == 0,
+		activeInvocations:     make(map[uint32]*Invocation, 300),
+		includesCache:         make(map[string]*IncludesCache, 1),
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -137,7 +126,7 @@ func (daemon *Daemon) ServeUntilNobodyAlive() {
 
 	var rLimit syscall.Rlimit
 	_ = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	logClient.Info(0, "env:", "clientID", daemon.clientID, "; user", daemon.hostUserName, "; num servers", len(daemon.remoteConnections), "; ulimit -n", rLimit.Cur, "; num cpu", runtime.NumCPU(), "; version", common.GetVersion())
+	logClient.Info(0, "env:", "clientID", daemon.clientID, "; num servers", len(daemon.remoteConnections), "; ulimit -n", rLimit.Cur, "; num cpu", runtime.NumCPU(), "; version", common.GetVersion())
 
 	go daemon.PeriodicallyInterruptHangedInvocations()
 	go daemon.listener.StartAcceptingConnections(daemon)
@@ -189,7 +178,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 		return daemon.InvokeLocalCompilation(req, invocation.err)
 
 	case invokedForLinking:
-		logClient.Info(1, "fallback to local cxx for linking")
+		logClient.Info(1, "fallback to local compiler for linking")
 		return daemon.InvokeLocalCompilation(req, nil)
 
 	case invokedForCompilingPch:
@@ -256,16 +245,16 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 	}
 
 	var reply DaemonSockResponse
-	if daemon.disableLocalCxx {
+	if daemon.disableLocalCompiler {
 		reply.ExitCode = 1
-		reply.Stderr = []byte("fallback to local cxx disabled")
+		reply.Stderr = []byte("fallback to local compiler disabled")
 		return reply
 	}
 
-	daemon.localCxxThrottle <- struct{}{}
-	localCxx := LocalCxxLaunch{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid}
-	reply.ExitCode, reply.Stdout, reply.Stderr = localCxx.RunCxxLocally()
-	<-daemon.localCxxThrottle
+	daemon.localCompilerThrottle <- struct{}{}
+	localcompiler := LocalCompilerLaunch{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid}
+	reply.ExitCode, reply.Stdout, reply.Stderr = localcompiler.RuncompilerLocally()
+	<-daemon.localCompilerThrottle
 
 	return reply
 }

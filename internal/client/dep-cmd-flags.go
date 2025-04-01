@@ -16,7 +16,7 @@ import (
 // Probably, it's used by CMake to track recompilation tree on that files change.
 //
 // nocc detects options like -MD and emits a depfile on a client side, after having collected all includes.
-// Moreover, these options are stripped off invocation.cxxArgs and are not sent to the remote at all.
+// Moreover, these options are stripped off invocation.compilerArgs and are not sent to the remote at all.
 //
 // Some options are supported and handled (-MF {file} / -MT {target} / ...).
 // Some are unsupported (-M / -MG / ....). When they occur, nocc falls back to local compilation.
@@ -70,7 +70,7 @@ func (deps *DepCmdFlags) ShouldGenerateDepFile() bool {
 }
 
 // GenerateAndSaveDepFile is called if a .o.d file generation is needed.
-// Prior to this, all dependencies (hFiles) are already known (via own includes or cxx -M).
+// Prior to this, all dependencies (hFiles) are already known (via own includes or compiler -M).
 // So, here we need only to satisfy depfile format rules.
 func (deps *DepCmdFlags) GenerateAndSaveDepFile(invocation *Invocation, hFiles []*IncludedFile) (string, error) {
 	targetName := deps.flagMT
@@ -148,12 +148,12 @@ func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []
 	return depList
 }
 
-func (deps *DepCmdFlags) filterOutSystemHFiles(cxxDefIDirs IncludeDirs, hFiles []*IncludedFile) []*IncludedFile {
+func (deps *DepCmdFlags) filterOutSystemHFiles(compilerDefIDirs IncludeDirs, hFiles []*IncludedFile) []*IncludedFile {
 	userHFiles := make([]*IncludedFile, 0)
 
 	for _, hFile := range hFiles {
 		isSystem := false
-		for _, sysDir := range cxxDefIDirs.dirsIsystem {
+		for _, sysDir := range compilerDefIDirs.dirsIsystem {
 			if strings.HasPrefix(hFile.fileName, sysDir) {
 				isSystem = true
 			}

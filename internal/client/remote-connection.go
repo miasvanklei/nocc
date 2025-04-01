@@ -23,8 +23,8 @@ type RemoteConnection struct {
 	filesUploading *FilesUploading
 	filesReceiving *FilesReceiving
 
-	clientID        string // = Daemon.clientID
-	hostUserName    string // = Daemon.hostUserName
+	clientID     string // = Daemon.clientID
+	hostUserName string // = Daemon.hostUserName
 }
 
 func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
@@ -39,13 +39,12 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 
 	remote := &RemoteConnection{
-		remoteHostPort:  remoteHostPort,
-		remoteHost:      ExtractRemoteHostWithoutPort(remoteHostPort),
-		grpcClient:      grpcClient,
-		filesUploading:  MakeFilesUploading(daemon, grpcClient),
-		filesReceiving:  MakeFilesReceiving(daemon, grpcClient),
-		clientID:        daemon.clientID,
-		hostUserName:    daemon.hostUserName,
+		remoteHostPort: remoteHostPort,
+		remoteHost:     ExtractRemoteHostWithoutPort(remoteHostPort),
+		grpcClient:     grpcClient,
+		filesUploading: MakeFilesUploading(daemon, grpcClient),
+		filesReceiving: MakeFilesReceiving(daemon, grpcClient),
+		clientID:       daemon.clientID,
 	}
 
 	if err != nil {
@@ -53,9 +52,8 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 	}
 
 	_, err = grpcClient.pb.StartClient(ctxWithTimeout, &pb.StartClientRequest{
-		ClientID:        daemon.clientID,
-		HostUserName:    daemon.hostUserName,
-		ClientVersion:   common.GetVersion(),
+		ClientID:      daemon.clientID,
+		ClientVersion: common.GetVersion(),
 	})
 	if err != nil {
 		return remote, err
@@ -87,10 +85,10 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 			ClientID:      remote.clientID,
 			SessionID:     invocation.sessionID,
 			Cwd:           invocation.cwd,
-			CppInFile:     invocation.cppInFile,
-			CxxName:       invocation.cxxName,
-			CxxArgs:       append(invocation.cxxArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.cxxName)...),
-			CxxIDirs:      append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.defIDirs.AsCxxArgs()...),
+			InputFile:     invocation.cppInFile,
+			Compiler:      invocation.compilerName,
+			Args:          append(invocation.compilerArgs, invocation.includesCache.defIDirs.AsIncArgs(invocation.compilerName)...),
+			IDirs:         append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
 			RequiredFiles: requiredFiles,
 		})
 
@@ -117,12 +115,12 @@ func (remote *RemoteConnection) UploadFilesToRemote(invocation *Invocation, requ
 // WaitForCompiledObj returns when the resulting .o file is compiled on remote, downloaded and saved on client.
 // We don't send any request here, just wait: after all uploads finish, the remote starts compiling .cpp.
 // When .o is ready, the remote pushes it to a receiving stream, and wgRecv is done.
-// If cxx compilation exits with non-zero code, the same stream is used to send error details.
+// If compilation exits with non-zero code, the same stream is used to send error details.
 // See FilesReceiving.
 func (remote *RemoteConnection) WaitForCompiledObj(invocation *Invocation) (exitCode int, stdout []byte, stderr []byte, err error) {
 	invocation.wgRecv.Wait()
 
-	return invocation.cxxExitCode, invocation.cxxStdout, invocation.cxxStderr, invocation.err
+	return invocation.compilerExitCode, invocation.compilerStdout, invocation.compilerStderr, invocation.err
 }
 
 func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) {

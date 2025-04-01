@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-type CxxLauncher struct {
-	serverCxxThrottle chan struct{}
+type CompilerLauncher struct {
+	serverCompilerThrottle chan struct{}
 
 	nSessionsReadyButWaiting int64
 	nSessionsNowCompiling    int64
@@ -24,126 +24,126 @@ type CxxLauncher struct {
 	nonZeroExitCodeCount int64
 }
 
-func MakeCxxLauncher(maxParallelCxxProcesses int64) (*CxxLauncher, error) {
-	if maxParallelCxxProcesses <= 0 {
-		return nil, fmt.Errorf("invalid maxParallelCxxProcesses %d", maxParallelCxxProcesses)
+func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher, error) {
+	if maxParallelCompilerProcesses <= 0 {
+		return nil, fmt.Errorf("invalid maxParallelcompilerProcesses %d", maxParallelCompilerProcesses)
 	}
 
-	return &CxxLauncher{
-		serverCxxThrottle: make(chan struct{}, maxParallelCxxProcesses),
+	return &CompilerLauncher{
+		serverCompilerThrottle: make(chan struct{}, maxParallelCompilerProcesses),
 	}, nil
 }
 
-// LaunchCxxWhenPossible launches the C++ compiler on a server managing a waiting queue.
+// LaunchCompilerWhenPossible launches the C++ compiler on a server managing a waiting queue.
 // The purpose of a waiting queue is not to over-utilize server resources at peak times.
 // Currently, amount of max parallel C++ processes is an option provided at start up
 // (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
-func (cxxLauncher *CxxLauncher) LaunchCxxWhenPossible(noccServer *NoccServer, session *Session) {
-	atomic.AddInt64(&cxxLauncher.nSessionsReadyButWaiting, 1)
-	cxxLauncher.serverCxxThrottle <- struct{}{} // blocking
+func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(noccServer *NoccServer, session *Session) {
+	atomic.AddInt64(&compilerLauncher.nSessionsReadyButWaiting, 1)
+	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
 
-	atomic.AddInt64(&cxxLauncher.nSessionsReadyButWaiting, -1)
-	curParallelCount := atomic.AddInt64(&cxxLauncher.nSessionsNowCompiling, 1)
+	atomic.AddInt64(&compilerLauncher.nSessionsReadyButWaiting, -1)
+	curParallelCount := atomic.AddInt64(&compilerLauncher.nSessionsNowCompiling, 1)
 
-	logServer.Info(1, "launch cxx #", curParallelCount, "sessionID", session.sessionID, "clientID", session.client.clientID, session.cxxCmdLine)
-	cxxLauncher.launchServerCxxForCpp(session, noccServer) // blocking until cxx ends
+	logServer.Info(1, "launch compiler #", curParallelCount, "sessionID", session.sessionID, "clientID", session.client.clientID, session.compilerCmdLine)
+	compilerLauncher.launchServerCompilerForCpp(session, noccServer) // blocking until compiler ends
 
-	atomic.AddInt64(&cxxLauncher.nSessionsNowCompiling, -1)
-	atomic.AddInt64(&cxxLauncher.totalCalls, 1)
-	atomic.AddInt64(&cxxLauncher.totalDurationMs, int64(session.cxxDuration))
+	atomic.AddInt64(&compilerLauncher.nSessionsNowCompiling, -1)
+	atomic.AddInt64(&compilerLauncher.totalCalls, 1)
+	atomic.AddInt64(&compilerLauncher.totalDurationMs, int64(session.compilerDuration))
 
-	if session.cxxExitCode != 0 {
-		atomic.AddInt64(&cxxLauncher.nonZeroExitCodeCount, 1)
-	} else if session.cxxDuration > 30000 {
-		atomic.AddInt64(&cxxLauncher.more30secCount, 1)
-	} else if session.cxxDuration > 10000 {
-		atomic.AddInt64(&cxxLauncher.more10secCount, 1)
+	if session.compilerExitCode != 0 {
+		atomic.AddInt64(&compilerLauncher.nonZeroExitCodeCount, 1)
+	} else if session.compilerDuration > 30000 {
+		atomic.AddInt64(&compilerLauncher.more30secCount, 1)
+	} else if session.compilerDuration > 10000 {
+		atomic.AddInt64(&compilerLauncher.more10secCount, 1)
 	}
 
-	<-cxxLauncher.serverCxxThrottle
+	<-compilerLauncher.serverCompilerThrottle
 	session.PushToClientReadyChannel()
 }
 
-func (cxxLauncher *CxxLauncher) GetNowCompilingSessionsCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.nSessionsNowCompiling)
+func (compilerLauncher *CompilerLauncher) GetNowCompilingSessionsCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.nSessionsNowCompiling)
 }
 
-func (cxxLauncher *CxxLauncher) GetWaitingInQueueSessionsCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.nSessionsReadyButWaiting)
+func (compilerLauncher *CompilerLauncher) GetWaitingInQueueSessionsCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.nSessionsReadyButWaiting)
 }
 
-func (cxxLauncher *CxxLauncher) GetTotalCxxCallsCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.totalCalls)
+func (compilerLauncher *CompilerLauncher) GetTotalcompilerCallsCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.totalCalls)
 }
 
-func (cxxLauncher *CxxLauncher) GetTotalCxxDurationMilliseconds() int64 {
-	return atomic.LoadInt64(&cxxLauncher.totalDurationMs)
+func (compilerLauncher *CompilerLauncher) GetTotalcompilerDurationMilliseconds() int64 {
+	return atomic.LoadInt64(&compilerLauncher.totalDurationMs)
 }
 
-func (cxxLauncher *CxxLauncher) GetMore10secCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.more10secCount)
+func (compilerLauncher *CompilerLauncher) GetMore10secCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.more10secCount)
 }
 
-func (cxxLauncher *CxxLauncher) GetMore30secCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.more30secCount)
+func (compilerLauncher *CompilerLauncher) GetMore30secCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.more30secCount)
 }
 
-func (cxxLauncher *CxxLauncher) GetNonZeroExitCodeCount() int64 {
-	return atomic.LoadInt64(&cxxLauncher.nonZeroExitCodeCount)
+func (compilerLauncher *CompilerLauncher) GetNonZeroExitCodeCount() int64 {
+	return atomic.LoadInt64(&compilerLauncher.nonZeroExitCodeCount)
 }
 
-func (cxxLauncher *CxxLauncher) launchServerCxxForCpp(session *Session, noccServer *NoccServer) {
-	cxxCommand := exec.Command(session.cxxName, session.cxxCmdLine...)
-	cxxCommand.Dir = session.cxxCwd
-	var cxxStdout, cxxStderr bytes.Buffer
-	cxxCommand.Stderr = &cxxStderr
-	cxxCommand.Stdout = &cxxStdout
+func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, noccServer *NoccServer) {
+	compilerCommand := exec.Command(session.compilerName, session.compilerCmdLine...)
+	compilerCommand.Dir = session.compilerCwd
+	var compilerStdout, compilerStderr bytes.Buffer
+	compilerCommand.Stderr = &compilerStderr
+	compilerCommand.Stdout = &compilerStdout
 
 	start := time.Now()
-	err := cxxCommand.Run()
+	err := compilerCommand.Run()
 
-	session.cxxDuration = int32(time.Since(start).Milliseconds())
-	session.cxxExitCode = int32(cxxCommand.ProcessState.ExitCode())
-	session.cxxStdout = cxxStdout.Bytes()
-	session.cxxStderr = cxxStderr.Bytes()
-	if len(session.cxxStderr) == 0 && err != nil {
-		session.cxxStderr = []byte(fmt.Sprintln(err))
+	session.compilerDuration = int32(time.Since(start).Milliseconds())
+	session.compilerExitCode = int32(compilerCommand.ProcessState.ExitCode())
+	session.compilerStdout = compilerStdout.Bytes()
+	session.compilerStderr = compilerStderr.Bytes()
+	if len(session.compilerStderr) == 0 && err != nil {
+		session.compilerStderr = []byte(fmt.Sprintln(err))
 	}
 
-	if session.cxxExitCode != 0 {
-		logServer.Error("the C++ compiler exited with code", session.cxxExitCode, "sessionID", session.sessionID, session.cppInFile, "\ncxxCwd:", session.cxxCwd, "\ncxxCmdLine:", session.cxxName, session.cxxCmdLine, "\ncxxStdout:", strings.TrimSpace(string(session.cxxStdout)), "\ncxxStderr:", strings.TrimSpace(string(session.cxxStderr)))
-	} else if session.cxxDuration > 30000 {
-		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "cxxDuration", session.cxxDuration, session.cppInFile)
+	if session.compilerExitCode != 0 {
+		logServer.Error("the C++ compiler exited with code", session.compilerExitCode, "sessionID", session.sessionID, session.InputFile, "\ncompilerCwd:", session.compilerCwd, "\ncompilerCmdLine:", session.compilerName, session.compilerCmdLine, "\ncompilerStdout:", strings.TrimSpace(string(session.compilerStdout)), "\ncompilerStderr:", strings.TrimSpace(string(session.compilerStderr)))
+	} else if session.compilerDuration > 30000 {
+		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
 	}
 
-	// save to obj cache (to be safe, only if cxx output is empty)
+	// save to obj cache (to be safe, only if compiler output is empty)
 	if !session.objCacheKey.IsEmpty() {
-		if session.cxxExitCode == 0 && len(session.cxxStdout) == 0 && len(session.cxxStderr) == 0 {
-			if stat, err := os.Stat(session.objOutFile); err == nil {
-				_ = noccServer.ObjFileCache.SaveFileToCache(session.objOutFile, path.Base(session.cppInFile)+".o", session.objCacheKey, stat.Size())
+		if session.compilerExitCode == 0 && len(session.compilerStdout) == 0 && len(session.compilerStderr) == 0 {
+			if stat, err := os.Stat(session.OutputFile); err == nil {
+				_ = noccServer.ObjFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
 			}
 		}
 	}
 
-	session.cxxStdout = cxxLauncher.patchStdoutDropServerPaths(session.client, session.cxxStdout)
-	session.cxxStderr = cxxLauncher.patchStdoutDropServerPaths(session.client, session.cxxStderr)
+	session.compilerStdout = compilerLauncher.patchStdoutDropServerPaths(session.client, session.compilerStdout)
+	session.compilerStderr = compilerLauncher.patchStdoutDropServerPaths(session.client, session.compilerStderr)
 }
 
-func (cxxLauncher *CxxLauncher) launchServerCxxForPch(cxxName string, cxxCmdLine []string, rootDir string) error {
-	cxxCommand := exec.Command(cxxName, cxxCmdLine...)
-	cxxCommand.Dir = rootDir
-	var cxxStdout, cxxStderr bytes.Buffer
-	cxxCommand.Stderr = &cxxStderr
-	cxxCommand.Stdout = &cxxStdout
+func (compilerLauncher *CompilerLauncher) launchServercompilerForPch(compilerName string, compilerCmdLine []string, rootDir string) error {
+	compilerCommand := exec.Command(compilerName, compilerCmdLine...)
+	compilerCommand.Dir = rootDir
+	var compilerStdout, compilerStderr bytes.Buffer
+	compilerCommand.Stderr = &compilerStderr
+	compilerCommand.Stdout = &compilerStdout
 
-	logServer.Info(1, "launch cxx for pch compilation", "rootDir", rootDir)
-	_ = cxxCommand.Run()
+	logServer.Info(1, "launch compiler for pch compilation", "rootDir", rootDir)
+	_ = compilerCommand.Run()
 
-	cxxExitCode := cxxCommand.ProcessState.ExitCode()
+	compilerExitCode := compilerCommand.ProcessState.ExitCode()
 
-	if cxxExitCode != 0 {
-		logServer.Error("the C++ compiler exited with code pch", cxxExitCode, "\ncmdLine:", cxxName, cxxCmdLine, "\ncxxStdout:", strings.TrimSpace(cxxStdout.String()), "\ncxxStderr:", strings.TrimSpace(cxxStderr.String()))
-		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", cxxExitCode, cxxStdout.String()+cxxStderr.String())
+	if compilerExitCode != 0 {
+		logServer.Error("the C++ compiler exited with code pch", compilerExitCode, "\ncmdLine:", compilerName, compilerCmdLine, "\ncompilerStdout:", strings.TrimSpace(compilerStdout.String()), "\ncompilerStderr:", strings.TrimSpace(compilerStderr.String()))
+		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", compilerExitCode, compilerStdout.String()+compilerStderr.String())
 	}
 
 	return nil
@@ -151,7 +151,7 @@ func (cxxLauncher *CxxLauncher) launchServerCxxForPch(cxxName string, cxxCmdLine
 
 // patchStdoutDropServerPaths replaces /tmp/nocc/cpp/clients/clientID/path/to/file.cpp with /path/to/file.cpp.
 // It's very handy to send back stdout/stderr without server paths.
-func (cxxLauncher *CxxLauncher) patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
+func (compilerLauncher *CompilerLauncher) patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
 	if len(stdout) == 0 {
 		return stdout
 	}

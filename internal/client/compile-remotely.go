@@ -21,8 +21,8 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	invocation.summary.nIncludes = len(hFiles)
 	invocation.summary.AddTiming("collected_includes")
 
-	// if cxx is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
-	// we do it on a client side (moreover, they are stripped off cxxArgs and not sent to the remote)
+	// if compiler is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
+	// we do it on a client side (moreover, they are stripped off compilerArgs and not sent to the remote)
 	// note, that .o.d file is generated ALONG WITH .o (like "a side effect of compilation")
 	if invocation.depsFlags.ShouldGenerateDepFile() {
 		go func() {
@@ -76,7 +76,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	// Now, we have a resulting .o file placed in a path determined by -o from command line.
 	if exitCode != 0 {
 		logClient.Info(0, "remote C++ compiler exited with code", exitCode, "sessionID", invocation.sessionID, invocation.cppInFile, remote.remoteHost)
-		logClient.Info(1, "cxxExitCode:", exitCode, "sessionID", invocation.sessionID, "\ncxxStdout:", strings.TrimSpace(string(invocation.cxxStdout)), "\ncxxStderr:", strings.TrimSpace(string(invocation.cxxStderr)))
+		logClient.Info(1, "compilerExitCode:", exitCode, "sessionID", invocation.sessionID, "\ncompilerStdout:", strings.TrimSpace(string(invocation.compilerStdout)), "\ncompilerStderr:", strings.TrimSpace(string(invocation.compilerStderr)))
 	} else {
 		logClient.Info(2, "saved obj file to", invocation.objOutFile)
 	}

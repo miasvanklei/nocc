@@ -66,8 +66,8 @@ func main() {
 		"", "NOCC_LOG_FILENAME")
 	logVerbosity := common.CmdEnvInt("Logger verbosity level for INFO (-1 off, default 0, max 2).\nErrors are logged always.", 0,
 		"", "NOCC_LOG_VERBOSITY")
-	localCxxQueueSize := common.CmdEnvInt("Amount of parallel processes when remotes aren't available and cxx is launched locally.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
-		"", "NOCC_LOCAL_CXX_QUEUE_SIZE")
+	localCompilerQueueSize := common.CmdEnvInt("Amount of parallel processes when remotes aren't available and compiler is launched locally.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
+		"", "NOCC_LOCAL_COMPILER_QUEUE_SIZE")
 
 	common.ParseCmdFlagsCombiningWithEnv()
 
@@ -83,25 +83,20 @@ func main() {
 		os.Exit(0)
 	}
 
-	// `nocc-daemon start {cxxName}`
-	// on init fail, we should print an error to stdout (a parent process is listening to stdout pipe)
-	// on init success, we should print '1' to stdout
-	if len(os.Args) == 2 && os.Args[1] == "start" {
-		if err := client.MakeLoggerClient(*logFileName, *logVerbosity, *logFileName != "stderr"); err != nil {
-			failedStartDaemon(err)
-		}
-
-		daemon, err := client.MakeDaemon(remoteNoccHosts, *socksProxyAddr, *localCxxQueueSize)
-		if err != nil {
-			failedStartDaemon(err)
-		}
-		err = daemon.StartListeningUnixSocket()
-		if err != nil {
-			failedStartDaemon(err)
-		}
-
-		daemon.ServeUntilNobodyAlive()
-		_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyStopping)
-		return
+	if err := client.MakeLoggerClient(*logFileName, *logVerbosity, *logFileName != "stderr"); err != nil {
+		failedStartDaemon(err)
 	}
+
+	daemon, err := client.MakeDaemon(remoteNoccHosts, *socksProxyAddr, *localCompilerQueueSize)
+	if err != nil {
+		failedStartDaemon(err)
+	}
+	err = daemon.StartListeningUnixSocket()
+	if err != nil {
+		failedStartDaemon(err)
+	}
+
+	daemon.ServeUntilNobodyAlive()
+	_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyStopping)
+	return
 }

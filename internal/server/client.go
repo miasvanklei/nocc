@@ -95,15 +95,15 @@ func (client *Client) CreateNewSession(in *pb.StartCompilationSessionRequest) (*
 	newSession := &Session{
 		sessionID: in.SessionID,
 		files:     make([]*fileInClientDir, len(in.RequiredFiles)),
-		cxxName:   in.CxxName,
-		cppInFile: in.CppInFile, // as specified in a client cmd line invocation (relative to in.Cwd or abs on a client file system)
+		compilerName:   in.Compiler,
+		InputFile: in.InputFile, // as specified in a client cmd line invocation (relative to in.Cwd or abs on a client file system)
 		client:    client,
-		// objOutFile is filled only in cxx is required to be called, see Session.PrepareServerCxxCmdLine()
+		// objOutFile is filled only in compiler is required to be called, see Session.PrepareServercompilerCmdLine()
 	}
 
 	for index, meta := range in.RequiredFiles {
 		fileSHA256 := common.SHA256{B0_7: meta.SHA256_B0_7, B8_15: meta.SHA256_B8_15, B16_23: meta.SHA256_B16_23, B24_31: meta.SHA256_B24_31}
-		file, err := client.StartUsingFileInSession(meta.ClientFileName, meta.FileSize, fileSHA256)
+		file, err := client.StartUsingFileInSession(meta.FileName, meta.FileSize, fileSHA256)
 		newSession.files[index] = file
 		// the only reason why a session can't be created is a dependency conflict:
 		// previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2
@@ -129,8 +129,8 @@ func (client *Client) CloseSession(session *Session) {
 	delete(client.sessions, session.sessionID)
 	client.mu.Unlock()
 
-	if !session.objCacheExists { // delete /tmp/nocc/obj/cxx-out/this.o (already hard linked to obj cache)
-		_ = os.Remove(session.objOutFile)
+	if !session.objCacheExists { // delete /tmp/nocc/obj/compiler-out/this.o (already hard linked to obj cache)
+		_ = os.Remove(session.OutputFile)
 	}
 	session.files = nil
 }
@@ -216,8 +216,8 @@ func (client *Client) MkdirAllForSession(session *Session) {
 			}
 		}
 	}
-	if exists := client.dirs[session.cxxCwd]; !exists {
-		dirsToCreate = append(dirsToCreate, session.cxxCwd)
+	if exists := client.dirs[session.compilerCwd]; !exists {
+		dirsToCreate = append(dirsToCreate, session.compilerCwd)
 	}
 	client.mu.RUnlock()
 

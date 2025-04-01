@@ -18,7 +18,7 @@ import (
 type ObjFileCache struct {
 	*FileCache
 
-	// next to obj-cache, there is a /tmp/nocc/obj/cxx-out directory (session.objOutFile point here)
+	// next to obj-cache, there is a /tmp/nocc/obj/compiler-out directory (session.objOutFile point here)
 	// after being compiled, files from here are hard linked to obj-cache
 	objTmpDir string
 }
@@ -34,31 +34,31 @@ func MakeObjFileCache(cacheDir string, objTmpDir string, limitBytes int64) (*Obj
 
 // MakeObjCacheKey creates a unique key (sha256) for an input .cpp file and all its dependencies.
 // If this exact .cpp file with these exact dependencies was already compiled (even by another client),
-// we can reuse stored .o and respond immediately, without actual cxx invocation.
+// we can reuse stored .o and respond immediately, without actual compiler invocation.
 //
-// Cxx compilation depends not only on files, but on other options too, the final cxxCmdLine looks like
+// Compiler compilation depends not only on files, but on other options too, the final compilerCmdLine looks like
 // > g++ -Wall -fpch-preprocess ... -iquote /tmp/client1/headers -o /tmp/client1/some.cpp.123.o /tmp/client1/some.cpp
 // We want to reuse a ready .o file if and only if:
 // * the .cpp file is the same (its name and sha256)
 // * all dependent .h/.nocc-pch/etc. are the same (their count, order, size, sha256)
-// * all C++ compiler options are the same
+// * all compiler options are the same
 //
-// The problem is with the last point. cxxCmdLine contains -I and other options that vary between clients:
+// The problem is with the last point. compilerCmdLine contains -I and other options that vary between clients:
 // > -iquote /tmp/nocc/cpp/clients/{clientID}/home/{username}/proj -I /tmp/gch/{random_hash} -o ...{random_int}.o
 // These are different options, but in fact, they should be considered the same.
-// That's why we don't take include paths into account when calculating a hash from cxxCmdLine.
+// That's why we don't take include paths into account when calculating a hash from compilerCmdLine.
 // The assumption is: if all deps are equal, their actual paths/names don't matter.
-func (cache *ObjFileCache) MakeObjCacheKey(cxxName string, cxxArgs []string, sessionFiles []*fileInClientDir, cppInFile string) common.SHA256 {
+func (cache *ObjFileCache) MakeObjCacheKey(compilerName string, compilerArgs []string, sessionFiles []*fileInClientDir, cppInFile string) common.SHA256 {
 	hasher := sha256.New()
 
-	hasher.Write([]byte(cxxName))
-	for _, arg := range cxxArgs {
+	hasher.Write([]byte(compilerName))
+	for _, arg := range compilerArgs {
 		hasher.Write([]byte(arg))
 	}
 	hasher.Write([]byte(path.Base(cppInFile))) // not a full path, as it varies between clients
 
 	sha256xor := common.MakeSHA256Struct(hasher)
-	sha256xor.B8_15 ^= uint64(len(cxxArgs))
+	sha256xor.B8_15 ^= uint64(len(compilerArgs))
 	sha256xor.B16_23 ^= uint64(len(sessionFiles))
 	for _, file := range sessionFiles {
 		sha256xor.XorWith(&file.fileSHA256)

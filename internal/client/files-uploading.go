@@ -75,13 +75,13 @@ func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.Compilatio
 			return
 
 		case req := <-fu.chanToUpload:
-			logClient.Info(2, "start uploading", req.file.FileSize, req.file.ClientFileName)
+			logClient.Info(2, "start uploading", req.file.FileSize, req.file.FileName)
 			if req.file.FileSize > 64*1024 {
-				logClient.Info(1, "upload large file", req.file.FileSize, req.file.ClientFileName)
+				logClient.Info(1, "upload large file", req.file.FileSize, req.file.FileName)
 			}
 
 			invocation := req.invocation
-			err := uploadFileByChunks(stream, chunkBuf, req.file.ClientFileName, fu.daemon.clientID, invocation.sessionID, req.fileIndex)
+			err := uploadFileByChunks(stream, chunkBuf, req.file.FileName, fu.daemon.clientID, invocation.sessionID, req.fileIndex)
 
 			// such complexity of error handling prevents hanging sessions and proper stream recreation
 			if err != nil {

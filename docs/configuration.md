@@ -101,7 +101,7 @@ and they are just transparently streamed back from a hard disk in chunks.
 
 ## Other commands from a client
 
-`nocc` has some commands aside from the `nocc cxx cmd-line` format:
+`nocc` has some commands aside from the `nocc cmd-line` format:
 
 * `nocc -version` / `nocc -v` — show version and exit
 * `nocc -checks-servers` — print out servers status and exit

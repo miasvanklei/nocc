@@ -18,7 +18,7 @@ type systemHeader struct {
 // If a client wants to send /usr/include/math.h, and it's the same as here on the server,
 // a client doesn't have to send its body,
 // because we'll use a server's one instead of saving it to /tmp/nocc/cpp/client/{clientID}/usr/include/math.h.
-// It's supposed, that system headers are in default include path of cxx on the server.
+// It's supposed, that system headers are in default include path of compiler on the server.
 // Without system headers detection, everything still works, it's just a moment of optimization.
 type SystemHeadersCache struct {
 	mu      sync.RWMutex

@@ -43,8 +43,8 @@ func (s *InvocationSummary) ToLogString(invocation *Invocation) string {
 	duration := time.Since(invocation.createTime).Milliseconds()
 
 	b := strings.Builder{}
-	fmt.Fprintf(&b, "cppInFile=%q, remote=%s, sessionID=%d, nIncludes=%d, nFilesSent=%d, nBytesSent=%d, nBytesReceived=%d, cxxDuration=%dms",
-		invocation.cppInFile, s.remoteHost, invocation.sessionID, s.nIncludes, s.nFilesSent, s.nBytesSent, s.nBytesReceived, invocation.cxxDuration)
+	fmt.Fprintf(&b, "cppInFile=%q, remote=%s, sessionID=%d, nIncludes=%d, nFilesSent=%d, nBytesSent=%d, nBytesReceived=%d, compilerDuration=%dms",
+		invocation.cppInFile, s.remoteHost, invocation.sessionID, s.nIncludes, s.nFilesSent, s.nBytesSent, s.nBytesReceived, invocation.compilerDuration)
 
 	prevTime := invocation.createTime
 	fmt.Fprintf(&b, ", started=0ms")

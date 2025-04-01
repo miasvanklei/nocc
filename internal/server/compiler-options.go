@@ -13,14 +13,14 @@ const prefixMapOption = "-ffile-prefix-map"
 // a different location using a specific prefix (for example, `/tmp/nocc/cpp/clients/{ClientID}`). If you specify
 // the old path using absolute path (`-ffile-prefix-map=/old/path=new`), a prefix will be added to the specified
 // path, where `nocc-server` stores the sources (`-ffile-prefix-map=/tmp/nocc/cpp/clients/{ClientID}/old/path=new`).
-func FilePrefixMapOption(cxxArg string, replaced string) string {
-	if strings.HasPrefix(cxxArg, prefixMapOption) {
-		parts := strings.Split(cxxArg, "=")
+func FilePrefixMapOption(compilerArg string, replaced string) string {
+	if strings.HasPrefix(compilerArg, prefixMapOption) {
+		parts := strings.Split(compilerArg, "=")
 		if len(parts) >= 2 && path.IsAbs(parts[1]) {
 			parts[1] = path.Join(replaced, parts[1])
-			cxxArg = strings.Join(parts, "=")
+			compilerArg = strings.Join(parts, "=")
 		}
-		return cxxArg
+		return compilerArg
 	}
-	return cxxArg
+	return compilerArg
 }

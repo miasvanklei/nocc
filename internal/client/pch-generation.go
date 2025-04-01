@@ -15,9 +15,9 @@ func GenerateOwnPch(daemon *Daemon, cwd string, invocation *Invocation) (*common
 		OwnPchFile:  common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"),
 		OrigHFile:   invocation.cppInFile,
 		OrigPchFile: invocation.objOutFile,
-		CxxName:     invocation.cxxName,
-		CxxArgs:     invocation.cxxArgs,
-		CxxIDirs:    append(invocation.cxxIDirs.AsCxxArgs(), invocation.includesCache.defIDirs.AsCxxArgs()...),
+		CxxName:     invocation.compilerName,
+		CxxArgs:     invocation.compilerArgs,
+		CxxIDirs:    append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includesCache.defIDirs.AsCompilerArgs()...),
 	}
 	_ = os.Remove(ownPch.OwnPchFile) // if a previous version exists
 
