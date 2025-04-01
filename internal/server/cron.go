@@ -27,7 +27,6 @@ func (c *Cron) doCron() {
 	for !c.stopFlag {
 		cronStartTime := time.Now()
 
-		c.noccServer.Stats.SendToStatsd(c.noccServer)
 		c.noccServer.SrcFileCache.PurgeLastElementsIfRequired()
 		c.noccServer.ObjFileCache.PurgeLastElementsIfRequired()
 		c.noccServer.ActiveClients.DeleteInactiveClients()

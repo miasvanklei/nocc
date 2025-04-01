@@ -193,31 +193,3 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 		return nil, false
 	}
 }
-
-// receiveLogFileByChunks gets a server log file and saves to a client file system, for debugging purposes
-// (implementation is simpler than receiving obj file, don't bother with proper error handling).
-// See server.sendLogFileByChunks.
-func receiveLogFileByChunks(stream pb.CompilationService_DumpLogsClient, firstChunk *pb.DumpLogsReply, logOutFile string) (int, error) {
-	receivedBytes := len(firstChunk.ChunkBody)
-
-	outFile, err := os.OpenFile(logOutFile, os.O_CREATE|os.O_WRONLY, os.ModePerm)
-	if err == nil {
-		_, err = outFile.Write(firstChunk.ChunkBody)
-	}
-
-	var nextChunk *pb.DumpLogsReply
-	for err == nil {
-		nextChunk, err = stream.Recv()
-		if err != nil || nextChunk.ChunkBody == nil { // nil chunk means end of file
-			break
-		}
-		_, err = outFile.Write(nextChunk.ChunkBody)
-		receivedBytes += len(nextChunk.ChunkBody)
-	}
-
-	if outFile != nil {
-		_ = outFile.Close()
-	}
-
-	return receivedBytes, err // err remains nil on success
-}

@@ -56,12 +56,6 @@ func main() {
 		"version", "")
 	showVersionAndExitShort := common.CmdEnvBool("Show version and exit.", false,
 		"v", "")
-	checkServersAndExit := common.CmdEnvBool("Print out servers status and exit.", false,
-		"check-servers", "")
-	dumpServerLogsAndExit := common.CmdEnvBool("Dump logs from all servers to /tmp/nocc-dump-logs/ and exit.\nServers must be launched with the `-log-filename` option.", false,
-		"dump-server-logs", "")
-	dropServerCachesAndExit := common.CmdEnvBool("Drop src cache and obj cache on all servers and exit.", false,
-		"drop-server-caches", "")
 	noccServers := common.CmdEnvString("Remote nocc servers — a list of 'host:port' delimited by ';'.\nIf not set, nocc will read NOCC_SERVERS_FILENAME.", "",
 		"", "NOCC_SERVERS")
 	socksProxyAddr := common.CmdEnvString("A socks5 proxy address for all remote connections.", "",
@@ -72,8 +66,6 @@ func main() {
 		"", "NOCC_LOG_FILENAME")
 	logVerbosity := common.CmdEnvInt("Logger verbosity level for INFO (-1 off, default 0, max 2).\nErrors are logged always.", 0,
 		"", "NOCC_LOG_VERBOSITY")
-	disableObjCache := common.CmdEnvBool("Disable obj cache on remote: .o will be compiled always and won't be stored.", false,
-		"", "NOCC_DISABLE_OBJ_CACHE")
 	localCxxQueueSize := common.CmdEnvInt("Amount of parallel processes when remotes aren't available and cxx is launched locally.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
 		"", "NOCC_LOCAL_CXX_QUEUE_SIZE")
 
@@ -91,36 +83,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *checkServersAndExit {
-		if len(os.Args) == 3 { // nocc -check-servers {remoteHostPort}
-			remoteNoccHosts = []string{os.Args[2]}
-		}
-		if len(remoteNoccHosts) == 0 {
-			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
-		}
-		client.RequestRemoteStatus(remoteNoccHosts, *socksProxyAddr)
-		os.Exit(0)
-	}
-
-	if *dumpServerLogsAndExit {
-		if len(os.Args) == 3 { // nocc -dump-server-logs {remoteHostPort}
-			remoteNoccHosts = []string{os.Args[2]}
-		}
-		if len(remoteNoccHosts) == 0 {
-			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
-		}
-		client.RequestRemoteDumpLogs(remoteNoccHosts, "/tmp/nocc-dump-logs", *socksProxyAddr)
-		os.Exit(0)
-	}
-
-	if *dropServerCachesAndExit {
-		if len(remoteNoccHosts) == 0 {
-			failedStart("no remote hosts set; you should set NOCC_SERVERS or NOCC_SERVERS_FILENAME")
-		}
-		client.RequestDropAllCaches(remoteNoccHosts, *socksProxyAddr)
-		os.Exit(0)
-	}
-
 	// `nocc-daemon start {cxxName}`
 	// on init fail, we should print an error to stdout (a parent process is listening to stdout pipe)
 	// on init success, we should print '1' to stdout
@@ -129,7 +91,7 @@ func main() {
 			failedStartDaemon(err)
 		}
 
-		daemon, err := client.MakeDaemon(remoteNoccHosts, *socksProxyAddr, *disableObjCache, *localCxxQueueSize)
+		daemon, err := client.MakeDaemon(remoteNoccHosts, *socksProxyAddr, *localCxxQueueSize)
 		if err != nil {
 			failedStartDaemon(err)
 		}

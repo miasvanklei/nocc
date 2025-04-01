@@ -66,8 +66,6 @@ func main() {
 		"src-cache-limit", "")
 	objCacheLimit := common.CmdEnvInt("Compiled obj cache limit, in bytes, default 16G.", 16*1024*1024*1024,
 		"obj-cache-limit", "")
-	statsdHostPort := common.CmdEnvString("Statsd udp address (host:port), omitted by default.\nIf omitted, stats won't be written.", "",
-		"statsd", "")
 	maxParallelCxx := common.CmdEnvInt("Max amount of C++ compiler processes launched in parallel, other ready sessions are waiting in a queue.\nBy default, it's a number of CPUs on the current machine.", int64(runtime.NumCPU()),
 		"max-parallel-cxx", "")
 
@@ -82,14 +80,7 @@ func main() {
 		failedStart("Can't init logger", err)
 	}
 
-	s := &server.NoccServer{
-		StartTime: time.Now(),
-	}
-
-	s.Stats, err = server.MakeStatsd(*statsdHostPort)
-	if err != nil {
-		failedStart("Failed to connect to statsd", err)
-	}
+	s := &server.NoccServer{}
 
 	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(cppStoreDir, "clients"))
 	if err != nil {

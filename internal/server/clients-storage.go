@@ -39,7 +39,7 @@ func (allClients *ClientsStorage) GetClient(clientID string) *Client {
 	return client
 }
 
-func (allClients *ClientsStorage) OnClientConnected(clientID string, disableObjCache bool) (*Client, error) {
+func (allClients *ClientsStorage) OnClientConnected(clientID string) (*Client, error) {
 	allClients.mu.RLock()
 	client := allClients.table[clientID]
 	allClients.mu.RUnlock()
@@ -66,7 +66,6 @@ func (allClients *ClientsStorage) OnClientConnected(clientID string, disableObjC
 		dirs:              make(map[string]bool, 100),
 		chanDisconnected:  make(chan struct{}),
 		chanReadySessions: make(chan *Session, 200),
-		disableObjCache:   disableObjCache,
 	}
 
 	allClients.mu.Lock()

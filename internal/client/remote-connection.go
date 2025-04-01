@@ -25,7 +25,6 @@ type RemoteConnection struct {
 
 	clientID        string // = Daemon.clientID
 	hostUserName    string // = Daemon.hostUserName
-	disableObjCache bool
 }
 
 func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
@@ -47,7 +46,6 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 		filesReceiving:  MakeFilesReceiving(daemon, grpcClient),
 		clientID:        daemon.clientID,
 		hostUserName:    daemon.hostUserName,
-		disableObjCache: daemon.disableObjCache,
 	}
 
 	if err != nil {
@@ -58,7 +56,6 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 		ClientID:        daemon.clientID,
 		HostUserName:    daemon.hostUserName,
 		ClientVersion:   common.GetVersion(),
-		DisableObjCache: daemon.disableObjCache,
 	})
 	if err != nil {
 		return remote, err

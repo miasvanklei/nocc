@@ -129,7 +129,7 @@ func (cxxLauncher *CxxLauncher) launchServerCxxForCpp(session *Session, noccServ
 	session.cxxStderr = cxxLauncher.patchStdoutDropServerPaths(session.client, session.cxxStderr)
 }
 
-func (cxxLauncher *CxxLauncher) launchServerCxxForPch(cxxName string, cxxCmdLine []string, rootDir string, noccServer *NoccServer) error {
+func (cxxLauncher *CxxLauncher) launchServerCxxForPch(cxxName string, cxxCmdLine []string, rootDir string) error {
 	cxxCommand := exec.Command(cxxName, cxxCmdLine...)
 	cxxCommand.Dir = rootDir
 	var cxxStdout, cxxStderr bytes.Buffer
@@ -137,13 +137,11 @@ func (cxxLauncher *CxxLauncher) launchServerCxxForPch(cxxName string, cxxCmdLine
 	cxxCommand.Stdout = &cxxStdout
 
 	logServer.Info(1, "launch cxx for pch compilation", "rootDir", rootDir)
-	atomic.AddInt64(&noccServer.Stats.pchCompilations, 1)
 	_ = cxxCommand.Run()
 
 	cxxExitCode := cxxCommand.ProcessState.ExitCode()
 
 	if cxxExitCode != 0 {
-		atomic.AddInt64(&noccServer.Stats.pchCompilationsFailed, 1)
 		logServer.Error("the C++ compiler exited with code pch", cxxExitCode, "\ncmdLine:", cxxName, cxxCmdLine, "\ncxxStdout:", strings.TrimSpace(cxxStdout.String()), "\ncxxStderr:", strings.TrimSpace(cxxStderr.String()))
 		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", cxxExitCode, cxxStdout.String()+cxxStderr.String())
 	}

@@ -58,7 +58,6 @@ type Client struct {
 
 	chanDisconnected  chan struct{}
 	chanReadySessions chan *Session
-	disableObjCache   bool
 }
 
 func (client *Client) makeNewFile(clientFileName string, fileSize int64, fileSHA256 common.SHA256) *fileInClientDir {

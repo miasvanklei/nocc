@@ -6,17 +6,11 @@ option go_package = "nocc/pb";
 package nocc;
 
 service CompilationService {
-    // Compilation api
     rpc StartClient(StartClientRequest) returns (StartClientReply) {}
     rpc StartCompilationSession(StartCompilationSessionRequest) returns (StartCompilationSessionReply) {}
     rpc UploadFileStream(stream UploadFileChunkRequest) returns (stream UploadFileReply) {}
     rpc RecvCompiledObjStream(OpenReceiveStreamRequest) returns (stream RecvCompiledObjChunkReply) {}
     rpc StopClient(StopClientRequest) returns (StopClientReply) {}
-
-    // Service api
-    rpc Status(StatusRequest) returns (StatusReply) {}
-    rpc DumpLogs(DumpLogsRequest) returns (stream DumpLogsReply) {}
-    rpc DropAllCaches(DropAllCachesRequest) returns (DropAllCachesReply) {}
 }
 
 message FileMetadata {
@@ -32,7 +26,6 @@ message StartClientRequest {
     string ClientID = 1;
     string HostUserName = 2;
     string ClientVersion = 3;
-    bool DisableObjCache = 10;
 }
 
 message StartClientReply {
@@ -84,42 +77,4 @@ message StopClientRequest {
 }
 
 message StopClientReply {
-}
-
-message StatusRequest {
-}
-
-message StatusReply {
-    string ServerVersion = 1;
-    repeated string ServerArgs = 2;
-    int64 ServerUptime = 3;
-    string GccVersion = 4;
-    string ClangVersion = 5;
-    int64 LogFileSize = 6;
-    int64 SrcCacheSize = 7;
-    int64 ObjCacheSize = 8;
-    int64 ULimit = 9;
-    string UName = 10;
-    int64 SessionsTotal = 11;
-    int64 SessionsActive = 12;
-    int64 CxxCalls = 20;
-    int64 CxxDurMore10sec = 21;
-    int64 CxxDurMore30sec = 22;
-    repeated string UniqueRemotes = 30;
-}
-
-message DumpLogsRequest {
-}
-
-message DumpLogsReply {
-    string LogFileExt = 1;
-    bytes ChunkBody = 2;
-}
-
-message DropAllCachesRequest {
-}
-
-message DropAllCachesReply {
-    int64 droppedSrcFiles = 1;
-    int64 droppedObjFiles = 2;
 }

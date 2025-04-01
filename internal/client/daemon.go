@@ -49,7 +49,6 @@ type Daemon struct {
 	socksProxyAddr    string
 	localCxxThrottle  chan struct{}
 
-	disableObjCache bool
 	disableLocalCxx bool
 
 	totalInvocations  uint32
@@ -86,7 +85,7 @@ func detectHostUserName() string {
 	return curUser.Username
 }
 
-func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache bool, maxLocalCxxProcesses int64) (*Daemon, error) {
+func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalCxxProcesses int64) (*Daemon, error) {
 	daemon := &Daemon{
 		startTime:            time.Now(),
 		quitDaemonChan:       make(chan int),
@@ -96,7 +95,6 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, disableObjCache
 		remoteNoccHosts:      remoteNoccHosts,
 		socksProxyAddr:       socksProxyAddr,
 		localCxxThrottle:     make(chan struct{}, maxLocalCxxProcesses),
-		disableObjCache:      disableObjCache,
 		disableLocalCxx:      maxLocalCxxProcesses == 0,
 		activeInvocations:    make(map[uint32]*Invocation, 300),
 		includesCache:        make(map[string]*IncludesCache, 1),

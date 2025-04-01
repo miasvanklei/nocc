@@ -48,15 +48,15 @@ func receiveUploadedFileByChunks(noccServer *NoccServer, stream pb.CompilationSe
 
 // sendObjFileByChunks is an actual implementation of piping a local server file to a client stream.
 // See client.receiveObjFileByChunks.
-func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServer, chunkBuf []byte, session *Session) (int64, error) {
+func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServer, chunkBuf []byte, session *Session) error {
 	fd, err := os.Open(session.objOutFile)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer fd.Close()
 	stat, err := fd.Stat()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	var n int
@@ -66,7 +66,7 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 			break
 		}
 		if err != nil {
-			return 0, err
+			return err
 		}
 		err = stream.Send(&pb.RecvCompiledObjChunkReply{
 			SessionID:   session.sessionID,
@@ -78,38 +78,11 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 			ChunkBody:   chunkBuf[:n],
 		})
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
 
 	// after sending a compiled obj, the client doesn't respond in any way,
 	// so we don't call stream.Recv(), the stream is already ready to send other objs
-	return stat.Size(), nil
-}
-
-// sendLogFileByChunks streams a local server log file, for debugging purposes
-// (implementation is similar to streaming obj file, but made simpler).
-// See client.receiveLogFileByChunks.
-func sendLogFileByChunks(stream pb.CompilationService_DumpLogsServer, serverLogFileName string, clientLogExt string) error {
-	chunkBuf := make([]byte, 1024*1024)
-	fd, err := os.Open(serverLogFileName)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-
-	var n int
-	for err == nil {
-		n, err = fd.Read(chunkBuf)
-		if err == io.EOF {
-			break
-		}
-
-		err = stream.Send(&pb.DumpLogsReply{
-			LogFileExt: clientLogExt,
-			ChunkBody:  chunkBuf[:n],
-		})
-	}
-
-	return stream.Send(&pb.DumpLogsReply{ChunkBody: nil}) // nil chunk means end of file
+	return nil
 }

@@ -5,13 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"path"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,10 +27,7 @@ type NoccServer struct {
 	pb.UnimplementedCompilationServiceServer
 	GRPCServer *grpc.Server
 
-	StartTime time.Time
-
 	Cron  *Cron
-	Stats *Statsd
 
 	ActiveClients  *ClientsStorage
 	CxxLauncher    *CxxLauncher
@@ -74,7 +68,6 @@ func (s *NoccServer) StartGRPCListening(listenAddr string) (net.Listener, error)
 func (s *NoccServer) QuitServerGracefully() {
 	logServer.Info(0, "graceful stop...")
 
-	s.Stats.Close()
 	s.Cron.StopCron()
 	s.ActiveClients.StopAllClients()
 	s.GRPCServer.GracefulStop()
@@ -85,7 +78,7 @@ func (s *NoccServer) QuitServerGracefully() {
 // So, one client == one running nocc-daemon. All clients have unique clientID.
 // When a nocc-daemon exits, it sends StopClient (or when it dies unexpectedly, a client is deleted after timeout).
 func (s *NoccServer) StartClient(_ context.Context, in *pb.StartClientRequest) (*pb.StartClientReply, error) {
-	client, err := s.ActiveClients.OnClientConnected(in.ClientID, in.DisableObjCache)
+	client, err := s.ActiveClients.OnClientConnected(in.ClientID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,38 +95,33 @@ func (s *NoccServer) StartClient(_ context.Context, in *pb.StartClientRequest) (
 func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartCompilationSessionRequest) (*pb.StartCompilationSessionReply, error) {
 	client := s.ActiveClients.GetClient(in.ClientID)
 	if client == nil {
-		atomic.AddInt64(&s.Stats.clientsUnauthenticated, 1)
 		logServer.Error("unauthenticated client on session start", "clientID", in.ClientID)
 		return nil, status.Errorf(codes.Unauthenticated, "clientID %s not found; probably, the server was restarted just now", in.ClientID)
 	}
 
 	session, err := client.CreateNewSession(in)
 	if err != nil {
-		atomic.AddInt64(&s.Stats.sessionsFailedOpen, 1)
 		logServer.Error("failed to open session", "clientID", in.ClientID, "sessionID", in.SessionID, err)
 		return nil, err
 	}
-	atomic.AddInt64(&s.Stats.sessionsCount, 1)
 
 	// optimistic path: this .o has already been compiled earlier and exists in obj cache
 	// then we don't need to upload files from the client (and even don't need to link them from src cache)
 	// respond that we are waiting 0 files, and the client would immediately request for a compiled obj
 	// it's mostly a moment of optimization: avoid calling os.Link from src cache to working dir
-	if !client.disableObjCache {
-		session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(in.CxxName, in.CxxArgs, session.files, in.CppInFile)
-		if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
-			session.objCacheExists = true
-			session.objOutFile = pathInObjCache // stream back this file directly
-			session.compilationStarted = 1      // client.GetSessionsNotStartedCompilation() will not return it
+	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(in.CxxName, in.CxxArgs, session.files, in.CppInFile)
+	if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
+		session.objCacheExists = true
+		session.objOutFile = pathInObjCache // stream back this file directly
+		session.compilationStarted = 1      // client.GetSessionsNotStartedCompilation() will not return it
 
-			logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.CppInFile)
-			client.RegisterCreatedSession(session)
-			atomic.AddInt64(&s.Stats.sessionsFromObjCache, 1)
-			session.PushToClientReadyChannel()
+		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.CppInFile)
+		client.RegisterCreatedSession(session)
+		session.PushToClientReadyChannel()
 
-			return &pb.StartCompilationSessionReply{}, nil
-		}
+		return &pb.StartCompilationSessionReply{}, nil
 	}
+
 	// otherwise, we detect files that don't exist in src cache and request a client to upload them
 	// before restoring from src cache, ensure that all client dirs structure is mirrored to workingDir
 	session.PrepareServerCxxCmdLine(s, in.Cwd, in.CxxArgs, in.CxxIDirs)
@@ -221,7 +209,6 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 
 		client := s.ActiveClients.GetClient(firstChunk.ClientID)
 		if client == nil {
-			atomic.AddInt64(&s.Stats.clientsUnauthenticated, 1)
 			logServer.Error("unauthenticated client on upload stream", "clientID", firstChunk.ClientID)
 			return status.Errorf(codes.Unauthenticated, "client %s not found", firstChunk.ClientID)
 		}
@@ -267,8 +254,6 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 		_ = stream.Send(&pb.UploadFileReply{})
 		_ = s.SrcFileCache.SaveFileToCache(file.serverFileName, path.Base(file.serverFileName), file.fileSHA256, file.fileSize)
 
-		atomic.AddInt64(&s.Stats.bytesReceived, file.fileSize)
-		atomic.AddInt64(&s.Stats.filesReceived, 1)
 		// start waiting for the next file over the same stream
 	}
 }
@@ -281,7 +266,6 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stream pb.CompilationService_RecvCompiledObjStreamServer) error {
 	client := s.ActiveClients.GetClient(in.ClientID)
 	if client == nil {
-		atomic.AddInt64(&s.Stats.clientsUnauthenticated, 1)
 		logServer.Error("unauthenticated client on recv stream", "clientID", in.ClientID)
 		return status.Errorf(codes.Unauthenticated, "client %s not found", in.ClientID)
 	}
@@ -321,12 +305,10 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 				}
 			} else {
 				logServer.Info(0, "send obj file", "sessionID", session.sessionID, "clientID", client.clientID, "cxxDuration", session.cxxDuration, session.objOutFile)
-				bytesSent, err := sendObjFileByChunks(stream, chunkBuf, session)
+				err := sendObjFileByChunks(stream, chunkBuf, session)
 				if err != nil {
 					return onError(session.sessionID, "can't send obj file %s sessionID %d clientID %s %v", session.objOutFile, session.sessionID, client.clientID, err)
 				}
-				atomic.AddInt64(&s.Stats.filesSent, 1)
-				atomic.AddInt64(&s.Stats.bytesSent, bytesSent)
 			}
 
 			client.CloseSession(session)
@@ -346,85 +328,4 @@ func (s *NoccServer) StopClient(_ context.Context, in *pb.StopClientRequest) (*p
 	}
 
 	return &pb.StopClientReply{}, nil
-}
-
-// Status is a grpc handler.
-// A client launched with the `-check-servers` cmd flag sends this request to all servers.
-func (s *NoccServer) Status(context.Context, *pb.StatusRequest) (*pb.StatusReply, error) {
-	logServer.Info(0, "requested status")
-
-	detectVersionFromConsoleOutput := func(output []byte) string {
-		for _, line := range strings.Split(string(output), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.Contains(line, " version ") {
-				return line
-			}
-		}
-		return "not found"
-	}
-
-	gccRawOut, _ := exec.Command("g++", "-v").CombinedOutput()
-	clangRawOut, _ := exec.Command("clang", "-v").CombinedOutput()
-	uNameRV, _ := exec.Command("uname", "-rv").CombinedOutput()
-
-	var rLimit syscall.Rlimit
-	_ = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-
-	return &pb.StatusReply{
-		ServerVersion:   common.GetVersion(),
-		ServerArgs:      os.Args,
-		ServerUptime:    int64(time.Since(s.StartTime)),
-		GccVersion:      detectVersionFromConsoleOutput(gccRawOut),
-		ClangVersion:    detectVersionFromConsoleOutput(clangRawOut),
-		LogFileSize:     logServer.GetFileSize(),
-		SrcCacheSize:    s.SrcFileCache.GetBytesOnDisk(),
-		ObjCacheSize:    s.ObjFileCache.GetBytesOnDisk(),
-		ULimit:          int64(rLimit.Cur),
-		UName:           strings.TrimSpace(string(uNameRV)),
-		SessionsTotal:   atomic.LoadInt64(&s.Stats.sessionsCount),
-		SessionsActive:  s.ActiveClients.ActiveSessionsCount(),
-		CxxCalls:        s.CxxLauncher.GetTotalCxxCallsCount(),
-		CxxDurMore10Sec: s.CxxLauncher.GetMore10secCount(),
-		CxxDurMore30Sec: s.CxxLauncher.GetMore30secCount(),
-	}, nil
-}
-
-// DumpLogs is a grpc handler.
-// A client launched with the `-dump-server-logs` cmd flag sends this request to all servers.
-func (s *NoccServer) DumpLogs(_ *pb.DumpLogsRequest, stream pb.CompilationService_DumpLogsServer) error {
-	logServer.Info(0, "requested to dump logs")
-
-	currentLog := logServer.GetFileName()
-	if currentLog == "" {
-		return errors.New("can't dump logs, as they aren't being saved to file")
-	}
-
-	// current: nocc-server.log
-	err := sendLogFileByChunks(stream, currentLog, ".log")
-	if err != nil {
-		return err
-	}
-	// previous rotated: nocc-server.log.1.gz
-	_ = sendLogFileByChunks(stream, currentLog+".1.gz", ".log.1.gz")
-	// stderr, for crashes: nocc-server.err.log
-	_ = sendLogFileByChunks(stream, common.ReplaceFileExt(currentLog, ".err.log"), ".log.err")
-
-	// empty, end of stream
-	return stream.Send(&pb.DumpLogsReply{LogFileExt: ""})
-}
-
-// DropAllCaches drops src and obj caches without restarting a server.
-// Used primarily for development purposes.
-func (s *NoccServer) DropAllCaches(context.Context, *pb.DropAllCachesRequest) (*pb.DropAllCachesReply, error) {
-	logServer.Info(0, "requested to drop all caches")
-
-	droppedSrcFiles := s.SrcFileCache.GetFilesCount()
-	droppedObjFiles := s.ObjFileCache.GetFilesCount()
-	s.SrcFileCache.DropAll()
-	s.ObjFileCache.DropAll()
-
-	return &pb.DropAllCachesReply{
-		DroppedSrcFiles: droppedSrcFiles,
-		DroppedObjFiles: droppedObjFiles,
-	}, nil
 }
