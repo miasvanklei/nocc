@@ -179,29 +179,29 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 
 	switch invocation.invokeType {
 	default:
-		return daemon.FallbackToLocalCxx(req, errors.New("unexpected invokeType after parsing"))
+		return daemon.InvokeLocalCompilation(req, errors.New("unexpected invokeType after parsing"))
 
 	case invokedForLocalCompiling:
-		return daemon.FallbackToLocalCxx(req, nil)
+		return daemon.InvokeLocalCompilation(req, nil)
 	case invokedUnsupported:
 		// if command-line has unsupported options or is non-well-formed,
 		// invocation.err describes a human-readable reason
-		return daemon.FallbackToLocalCxx(req, invocation.err)
+		return daemon.InvokeLocalCompilation(req, invocation.err)
 
 	case invokedForLinking:
 		logClient.Info(1, "fallback to local cxx for linking")
-		return daemon.FallbackToLocalCxx(req, nil)
+		return daemon.InvokeLocalCompilation(req, nil)
 
 	case invokedForCompilingPch:
 		invocation.includesCache.Clear()
 		ownPch, err := GenerateOwnPch(daemon, req.Cwd, invocation)
 		if err != nil {
-			return daemon.FallbackToLocalCxx(req, fmt.Errorf("failed to generate pch file: %v", err))
+			return daemon.InvokeLocalCompilation(req, fmt.Errorf("failed to generate pch file: %v", err))
 		}
 
 		fileSize, err := ownPch.SaveToOwnPchFile(invocation.uid, invocation.gid)
 		if err != nil {
-			return daemon.FallbackToLocalCxx(req, fmt.Errorf("failed to save pch file: %v", err))
+			return daemon.InvokeLocalCompilation(req, fmt.Errorf("failed to save pch file: %v", err))
 		}
 
 		invocation.includesCache.AddHFileInfo(ownPch.OwnPchFile, fileSize, ownPch.PchHash)
@@ -209,7 +209,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 
 		if !daemon.areAllRemotesAvailable() {
 			logClient.Info(0, "compiling real pch file for future local compilations", invocation.objOutFile)
-			return daemon.FallbackToLocalCxx(req, nil)
+			return daemon.InvokeLocalCompilation(req, nil)
 		}
 
 		return DaemonSockResponse{
@@ -219,14 +219,14 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 
 	case invokedForCompilingCpp:
 		if len(daemon.remoteConnections) == 0 {
-			return daemon.FallbackToLocalCxx(req, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers"))
+			return daemon.InvokeLocalCompilation(req, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers"))
 		}
 
 		remote := daemon.chooseRemoteConnectionForCppCompilation(invocation.cppInFile)
 		invocation.summary.remoteHost = remote.remoteHost
 
 		if remote.isUnavailable {
-			return daemon.FallbackToLocalCxx(req, fmt.Errorf("remote %s is unavailable", remote.remoteHost))
+			return daemon.InvokeLocalCompilation(req, fmt.Errorf("remote %s is unavailable", remote.remoteHost))
 		}
 
 		daemon.mu.Lock()
@@ -242,7 +242,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 		daemon.mu.Unlock()
 
 		if err != nil { // it's not an error in C++ code, it's a network error or remote failure
-			return daemon.FallbackToLocalCxx(req, err)
+			return daemon.InvokeLocalCompilation(req, err)
 		}
 
 		logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
@@ -250,7 +250,7 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 	}
 }
 
-func (daemon *Daemon) FallbackToLocalCxx(req DaemonSockRequest, reason error) DaemonSockResponse {
+func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) DaemonSockResponse {
 	if reason != nil {
 		logClient.Error("compiling locally:", reason)
 	}
@@ -284,7 +284,7 @@ func (daemon *Daemon) GetOrCreateIncludesCache(compilerName string) *IncludesCac
 	return includesCache
 }
 
-func (daemon *Daemon) FindBySessionID(sessionID uint32) *Invocation {
+func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {
 	daemon.mu.RLock()
 	invocation := daemon.activeInvocations[sessionID]
 	daemon.mu.RUnlock()
