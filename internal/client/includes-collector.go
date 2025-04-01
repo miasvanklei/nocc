@@ -40,7 +40,7 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // Since cxx knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
-func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile IncludedFile, err error) {
+func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, err error) {
 	cppInFileAbs := invocation.GetCppInFileAbs()
 
 	cxxCmdLine := make([]string, 0, len(invocation.cxxArgs)+2*invocation.cxxIDirs.Count()+4)
@@ -79,18 +79,22 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 	hFiles = make([]*IncludedFile, 0, len(hFilesNames))
 	preallocatedBuf := make([]byte, 32*1024)
 
-	fillSizeAndMTime := func(dest *IncludedFile) error {
-		file, err := os.Open(dest.fileName)
+	fillSizeAndMTime := func(fileName string) (*IncludedFile, error) {
+		file, err := os.Open(fileName)
 		if err == nil {
+			defer file.Close()
 			var stat os.FileInfo
 			stat, err = file.Stat()
 			if err == nil {
+				dest := IncludedFile{fileName: fileName}
 				dest.fileSize = stat.Size()
 				dest.fileSHA256, _, err = common.CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
+
+				return &dest, nil
 			}
-			_ = file.Close()
 		}
-		return err
+
+		return nil, err
 	}
 
 	addHFile := func(hFileName string, searchForPch bool) error {
@@ -100,26 +104,24 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 				return nil
 			}
 		}
-		hFile := &IncludedFile{fileName: hFileName}
-		if err := fillSizeAndMTime(hFile); err != nil {
+		hFile, err := fillSizeAndMTime(hFileName)
+		if err != nil {
 			return err
 		}
 		hFiles = append(hFiles, hFile)
 		return nil
 	}
 
-	// do not parallelize here to fit the system ulimit -n (cause includes collecting is also launched in parallel)
-	// it's slow, but enabling non-own include parser is for testing/bugs searching, so let it be
-	searchForPch := isSourceFileName(cppInFileAbs)
 	for _, hFileName := range hFilesNames {
+		searchForPch := isSourceFileName(hFileName)
 		err = addHFile(hFileName, searchForPch)
 		if err != nil {
 			return
 		}
 	}
 
-	cppFile = IncludedFile{fileName: cppInFileAbs}
-	err = fillSizeAndMTime(&cppFile)
+
+	cppFile, err = fillSizeAndMTime(cppInFileAbs)
 	return
 }
 
