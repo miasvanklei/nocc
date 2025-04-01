@@ -17,7 +17,7 @@ import (
 // It listens to a unix socket from `nocc` invocations (from a lightweight C++ wrapper).
 // Request/response transferred via this socket are represented as simple C-style strings with \0 delimiters, see below.
 type DaemonUnixSockListener struct {
-	activeConnections int32
+	activeConnections atomic.Int32
 	lastTimeAlive     time.Time
 	netListener       net.Listener
 }
@@ -38,7 +38,7 @@ type DaemonSockResponse struct {
 
 func MakeDaemonRpcListener() *DaemonUnixSockListener {
 	return &DaemonUnixSockListener{
-		activeConnections: 0,
+		activeConnections: atomic.Int32{},
 		lastTimeAlive:     time.Now(),
 	}
 }
@@ -75,7 +75,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 			return
 
 		case <-time.After(5 * time.Second):
-			nActive := atomic.LoadInt32(&listener.activeConnections)
+			nActive := listener.activeConnections.Load()
 			if nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
 				daemon.QuitDaemonGracefully("no connections receiving anymore")
 			}
@@ -112,9 +112,9 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 		CmdLine:  strings.Split(reqParts[2], " "),
 	}
 
-	atomic.AddInt32(&listener.activeConnections, 1)
+	listener.activeConnections.Add(1)
 	response := daemon.HandleInvocation(request)
-	atomic.AddInt32(&listener.activeConnections, -1)
+	listener.activeConnections.Add(-1)
 	listener.lastTimeAlive = time.Now()
 
 	listener.respondOk(conn, &response)

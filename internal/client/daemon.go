@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -51,7 +52,7 @@ type Daemon struct {
 
 	disableLocalCompiler bool
 
-	totalInvocations  uint32
+	totalInvocations  atomic.Uint32
 	activeInvocations map[uint32]*Invocation
 
 	includesDirs map[string]*IncludeDirs

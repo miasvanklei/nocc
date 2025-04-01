@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -17,7 +16,6 @@ type ClientsStorage struct {
 
 	clientsDir string // /tmp/nocc/cpp/clients
 
-	completedCount int64
 	lastPurgeTime  time.Time
 
 	uniqueRemotesList map[string]string
@@ -78,7 +76,6 @@ func (allClients *ClientsStorage) DeleteClient(client *Client) {
 	allClients.mu.Lock()
 	delete(allClients.table, client.clientID)
 	allClients.mu.Unlock()
-	atomic.AddInt64(&allClients.completedCount, 1)
 
 	close(client.chanDisconnected)
 	// don't close chanReadySessions intentionally, it's not a leak
@@ -126,10 +123,6 @@ func (allClients *ClientsStorage) ActiveCount() int64 {
 	clientsCount := len(allClients.table)
 	allClients.mu.RUnlock()
 	return int64(clientsCount)
-}
-
-func (allClients *ClientsStorage) CompletedCount() int64 {
-	return atomic.LoadInt64(&allClients.completedCount)
 }
 
 func (allClients *ClientsStorage) ActiveSessionsCount() int64 {

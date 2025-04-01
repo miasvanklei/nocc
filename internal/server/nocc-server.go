@@ -114,7 +114,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
 		session.objCacheExists = true
 		session.OutputFile = pathInObjCache // stream back this file directly
-		session.compilationStarted = 1      // client.GetSessionsNotStartedCompilation() will not return it
+		session.compilationStarted.Store(1)      // client.GetSessionsNotStartedCompilation() will not return it
 
 		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.InputFile)
 		client.RegisterCreatedSession(session)

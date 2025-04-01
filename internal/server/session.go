@@ -29,7 +29,7 @@ type Session struct {
 
 	objCacheKey        common.SHA256
 	objCacheExists     bool
-	compilationStarted int32
+	compilationStarted atomic.Int32
 
 	compilerExitCode int32
 	compilerStdout   []byte
@@ -91,7 +91,7 @@ func (session *Session) StartCompilingObjIfPossible(noccServer *NoccServer) {
 		}
 	}
 
-	if atomic.SwapInt32(&session.compilationStarted, 1) == 0 {
+	if session.compilationStarted.Swap(1) == 0 {
 		go noccServer.CompilerLauncher.LaunchCompilerWhenPossible(noccServer, session)
 	}
 }

@@ -102,8 +102,8 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 
 // UploadFilesToRemote uploads files to the remote in parallel and finishes after all of them are done.
 func (remote *RemoteConnection) UploadFilesToRemote(invocation *Invocation, requiredFiles []*pb.FileMetadata, fileIndexesToUpload []uint32) error {
-	invocation.waitUploads = int32(len(fileIndexesToUpload))
-	invocation.wgUpload.Add(int(invocation.waitUploads))
+	invocation.waitUploads.Store(int32(len(fileIndexesToUpload)))
+	invocation.wgUpload.Add(int(invocation.waitUploads.Load()))
 
 	for _, fileIndex := range fileIndexesToUpload {
 		remote.filesUploading.StartUploadingFileToRemote(invocation, requiredFiles[fileIndex], fileIndex)

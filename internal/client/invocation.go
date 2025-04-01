@@ -40,8 +40,8 @@ type Invocation struct {
 	compilerIDirs IncludeDirs // -I / -iquote / -isystem go here
 	depsFlags     DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
-	waitUploads int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
-	doneRecv    int32 // 1 if o file received or failed receiving; 1 releases wgRecv; see Invocation.DoneRecvObj
+	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
+	doneRecv    atomic.Int32 // 1 if o file received or failed receiving; 1 releases wgRecv; see Invocation.DoneRecvObj
 	wgUpload    sync.WaitGroup
 	wgRecv      sync.WaitGroup
 
@@ -215,7 +215,7 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		uid:           req.Uid,
 		gid:           req.Gid,
 		createTime:    time.Now(),
-		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
+		sessionID:     daemon.totalInvocations.Add(1),
 		cwd:           req.Cwd,
 		compilerName:  req.Compiler,
 		compilerArgs:  make([]string, 0, len(req.CmdLine)),
@@ -237,7 +237,7 @@ func (invocation *Invocation) GetCppInFileAbs() string {
 }
 
 func (invocation *Invocation) DoneRecvObj(err error) {
-	if atomic.SwapInt32(&invocation.doneRecv, 1) == 0 {
+	if invocation.doneRecv.Swap(1) == 0 {
 		if err != nil {
 			invocation.err = err
 		}
@@ -249,14 +249,14 @@ func (invocation *Invocation) DoneUploadFile(err error) {
 	if err != nil {
 		invocation.err = err
 	}
-	atomic.AddInt32(&invocation.waitUploads, -1)
+	invocation.waitUploads.Add(-1)
 	invocation.wgUpload.Done() // will end up after all required files uploaded/failed
 }
 
 func (invocation *Invocation) ForceInterrupt(err error) {
 	logClient.Error("force interrupt", "sessionID", invocation.sessionID, "remoteHost", invocation.summary.remoteHost, invocation.cppInFile, err)
 	// release invocation.wgUpload
-	for atomic.LoadInt32(&invocation.waitUploads) != 0 {
+	for invocation.waitUploads.Load() != 0 {
 		invocation.DoneUploadFile(err)
 	}
 	// release invocation.wgDone

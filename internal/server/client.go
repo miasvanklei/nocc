@@ -155,7 +155,7 @@ func (client *Client) GetSessionsNotStartedCompilation() []*Session {
 	sessions := make([]*Session, 0)
 	client.mu.RLock()
 	for _, session := range client.sessions { // loop over registered sessions
-		if atomic.LoadInt32(&session.compilationStarted) == 0 {
+		if session.compilationStarted.Load() == 0 {
 			sessions = append(sessions, session)
 		}
 	}
