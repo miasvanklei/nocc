@@ -40,7 +40,7 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // Since cxx knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
-func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, err error) {
+func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
 	cppInFileAbs := invocation.GetCppInFileAbs()
 
 	cxxCmdLine := make([]string, 0, len(invocation.cxxArgs)+2*invocation.cxxIDirs.Count()+4)
@@ -49,13 +49,8 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 	cxxCmdLine = append(cxxCmdLine, "-o", "-", "-M", cppInFileAbs)
 
 	// drop "-Xclang -emit-pch", as it outputs pch regardless of -M flag
-	// drop "-include-pch", since pch is generated on server side and does not exist locally
 	for i, arg := range cxxCmdLine {
 		if arg == "-Xclang" && i < len(cxxCmdLine)-1 && cxxCmdLine[i+1] == "-emit-pch" {
-			cxxCmdLine = slices.Delete(cxxCmdLine, i, i+2)
-			break
-		}
-		if arg == "-include-pch" && i < len(cxxCmdLine)-1 {
 			cxxCmdLine = slices.Delete(cxxCmdLine, i, i+2)
 			break
 		}
@@ -99,10 +94,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	addHFile := func(hFileName string, searchForPch bool) error {
 		if searchForPch {
-			if pchFile := LocateOwnPchFile(hFileName, invocation.includesCache); pchFile != nil {
-				hFiles = append(hFiles, pchFile)
-				return nil
-			}
+			pchFile, _ = fillSizeAndMTime(hFileName + ".nocc-pch")
 		}
 		hFile, err := fillSizeAndMTime(hFileName)
 		if err != nil {
@@ -145,37 +137,6 @@ func GetDefaultCxxIncludeDirsOnLocal(cxxName string) (IncludeDirs, error) {
 
 func GetDefaultCIncludeDirsOnLocal(cName string) (IncludeDirs, error) {
 	return GetDefaultIncludeDirsOnLocal(cName, "c")
-}
-
-// LocateOwnPchFile finds a .nocc-pch file next to .h.
-// The results are cached: if a file doesn't exist, it won't be looked up again until daemon is alive.
-func LocateOwnPchFile(hFileName string, includesCache *IncludesCache) *IncludedFile {
-	basehFileName := hFileName
-	cutHFileName, hasSuffix := strings.CutSuffix(hFileName, ".pch")
-	if hasSuffix {
-		basehFileName = cutHFileName
-	}
-	ownPchFile := basehFileName + ".nocc-pch"
-	pchCached, exists := includesCache.GetHFileInfo(ownPchFile)
-	if !exists {
-		if stat, err := os.Stat(ownPchFile); err == nil {
-			ownPch, err := common.ParseOwnPchFile(ownPchFile)
-			if err == nil {
-				includesCache.AddHFileInfo(ownPchFile, stat.Size(), ownPch.PchHash,)
-			} else {
-				logClient.Error(err)
-				includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{})
-			}
-		} else {
-			includesCache.AddHFileInfo(ownPchFile, -1, common.SHA256{})
-		}
-		pchCached, _ = includesCache.GetHFileInfo(ownPchFile)
-	}
-
-	if pchCached.fileSize == -1 {
-		return nil
-	}
-	return &IncludedFile{ownPchFile, pchCached.fileSize, pchCached.fileSHA256}
 }
 
 // parseCxxDefaultIncludeDirsFromWpStderr parses output of a C++ compiler with -Wp,-v option.

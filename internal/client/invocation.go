@@ -25,8 +25,8 @@ type Invocation struct {
 	invokeType int   // one of the constants above
 	err        error // any error occurred while parsing/uploading/compiling/receiving
 
-	uid int
-	gid int
+	uid        int
+	gid        int
 	createTime time.Time // used for local timeout
 	sessionID  uint32    // incremental while a daemon is alive
 
@@ -36,7 +36,7 @@ type Invocation struct {
 	cppInFile  string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	cxxName    string      // g++ / clang / etc.
-	cxxArgs    []string     // args like -Wall, -fpch-preprocess and many more, except:
+	cxxArgs    []string    // args like -Wall, -fpch-preprocess and many more, except:
 	cxxIDirs   IncludeDirs // -I / -iquote / -isystem go here
 	depsFlags  DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
@@ -131,12 +131,15 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
 				invocation.cxxIDirs.dirsIsystem = append(invocation.cxxIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
 				continue
-			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
-				absIFile := pathAbs(invocation.cwd, iFile)
-				invocation.cxxIDirs.filePCH = &absIFile
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
 				invocation.cxxIDirs.filesI = append(invocation.cxxIDirs.filesI, pathAbs(invocation.cwd, iFile))
 				continue
+			} else if arg == "-x" {
+				xArg := cmdLine[i+1]
+				if xArg == "c-header" || xArg == "c++-header" || xArg == "objective-c-header" || xArg == "objective-c++-header" {
+					invocation.depsFlags.SetCmdFlagEmitPCH()
+					i++
+				}
 			} else if arg == "-nostdinc" {
 				invocation.includesCache.defIDirs.stdinc = true
 			} else if arg == "-nostdinc++" {
@@ -169,7 +172,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				return
 			} else if arg == "-Xclang" && i < len(cmdLine)-1 { // "-Xclang {xArg}" — leave as is, unless we need to parse arg
 				xArg := cmdLine[i+1]
-				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" || xArg == "-include-pch" {
+				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" {
 					continue // like "-Xclang" doesn't exist
 				}
 				invocation.cxxArgs = append(invocation.cxxArgs, "-Xclang", xArg)
@@ -178,7 +181,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			} else if arg == "-march=native" {
 				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
 				return
-			} 
+			}
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
@@ -196,7 +199,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 
 	if strings.Contains(invocation.objOutFile, "/dev/null") {
 		invocation.invokeType = invokedForLocalCompiling
-	} else if strings.Contains(invocation.objOutFile, ".gch") || strings.Contains(invocation.objOutFile, ".pch") {
+	} else if invocation.depsFlags.flagEmitPCH {
 		invocation.invokeType = invokedForCompilingPch
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
 		invocation.invokeType = invokedForCompilingCpp
@@ -209,8 +212,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 
 func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 	invocation := &Invocation{
-		uid: req.Uid,
-		gid: req.Gid,
+		uid:           req.Uid,
+		gid:           req.Gid,
 		createTime:    time.Now(),
 		sessionID:     atomic.AddUint32(&daemon.totalInvocations, 1),
 		cwd:           req.Cwd,

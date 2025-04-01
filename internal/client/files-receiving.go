@@ -88,7 +88,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			mdSession := stream.Trailer().Get("sessionID")
 			if len(mdSession) == 1 {
 				sessionID, _ := strconv.Atoi(mdSession[0])
-				invocation := fr.daemon.FindBySessionID(uint32(sessionID))
+				invocation := fr.daemon.FindInvocationBySessionID(uint32(sessionID))
 				if invocation != nil {
 					invocation.DoneRecvObj(err)
 				}
@@ -101,7 +101,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			return
 		}
 
-		invocation := fr.daemon.FindBySessionID(firstChunk.SessionID)
+		invocation := fr.daemon.FindInvocationBySessionID(firstChunk.SessionID)
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
 			if firstChunk.CxxExitCode == 0 {
