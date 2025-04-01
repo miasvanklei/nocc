@@ -45,13 +45,13 @@ func formatStr(prefix string, v ...any) string {
 
 func (logger *LoggerWrapper) Info(verbosity int, v ...any) {
 	if logger.verbosity >= verbosity && logger.impl != nil {
-		_ = logger.impl.Output(0, formatStr("INFO", v...))
+		_ = logger.impl.Output(0, formatStr("", v...))
 	}
 }
 
 func (logger *LoggerWrapper) Error(v ...any) {
 	if logger.impl != nil {
-		_ = logger.impl.Output(0, formatStr("ERROR", v...))
+		_ = logger.impl.Output(0, formatStr("\033[31m", v...))
 	}
 	if logger.duplicateToStderr {
 		_, _ = fmt.Fprint(os.Stderr, formatStr("[nocc]", v...))
