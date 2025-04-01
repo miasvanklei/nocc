@@ -135,9 +135,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	// note, that if X is in src-cache, it's just hard linked from there to serverFileName
 	fileIndexesToUpload := make([]uint32, 0, len(session.files))
 	for index, file := range session.files {
-		switch file.state {
-		case fsFileStateJustCreated:
-			file.state = fsFileStateUploading
+		if file.state.CompareAndSwap(fsFileStateJustCreated, fsFileStateUploading) {
 			file.uploadStartTime = time.Now()
 
 			isSystemFile := IsSystemHeaderPath(file.serverFileName) // inside /usr/local/include
@@ -146,12 +144,12 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 			}
 			if isSystemFile {
 				logServer.Info(2, "file", file.serverFileName, "is a system file, no need to upload")
-				file.state = fsFileStateUploaded
+				file.state.Store(fsFileStateUploaded)
 				continue
 			}
 			if s.SrcFileCache.CreateHardLinkFromCache(file.serverFileName, file.fileSHA256) {
 				logServer.Info(2, "file", file.serverFileName, "is in src-cache, no need to upload")
-				file.state = fsFileStateUploaded
+				file.state.Store(fsFileStateUploaded)
 
 				if strings.HasSuffix(file.serverFileName, ".nocc-pch") {
 					_ = s.PchCompilation.CreateHardLinkFromRealPch(file.serverFileName, file.fileSHA256)
@@ -161,26 +159,20 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, client.MapServerAbsToClientFileName(file.serverFileName))
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
-
-		case fsFileStateUploading:
+		} else if file.state.CompareAndSwap(fsFileStateUploading, fsFileStateUploading) {
 			if !client.IsFileUploadHanged(file) { // this file is already requested to be uploaded
 				continue
 			}
 
-			file.state = fsFileStateUploading
 			file.uploadStartTime = time.Now()
 
 			logServer.Error("fs uploading->uploading", "sessionID", session.sessionID, file.serverFileName, "(re-requested because previous upload hanged)")
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
-
-		case fsFileStateUploadError:
-			file.state = fsFileStateUploading
+		} else if file.state.CompareAndSwap(fsFileStateUploadError, fsFileStateUploading) {
 			file.uploadStartTime = time.Now()
 
 			logServer.Error("fs error->uploading", "sessionID", session.sessionID, file.serverFileName, "(re-requested because previous upload error)")
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
-
-		case fsFileStateUploaded:
 		}
 	}
 
@@ -229,7 +221,7 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 		}
 
 		if err := receiveUploadedFileByChunks(s, stream, firstChunk, int(file.fileSize), file.serverFileName); err != nil {
-			file.state = fsFileStateUploadError
+			file.state.Store(fsFileStateUploadError)
 			logServer.Error("fs uploading->error", "sessionID", session.sessionID, clientFileName, err)
 			return fmt.Errorf("can't receive file %q: %v", clientFileName, err)
 		}
@@ -243,13 +235,13 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 		if strings.HasSuffix(file.serverFileName, ".nocc-pch") {
 			err = s.PchCompilation.CompileOwnPchOnServer(s, file.serverFileName)
 			if err != nil {
-				file.state = fsFileStateUploadError
+				file.state.Store(fsFileStateUploadError)
 				logServer.Error("can't compile own pch file", clientFileName, err)
 				return fmt.Errorf("can't compile pch file %q: %v", clientFileName, err)
 			}
 		}
 
-		file.state = fsFileStateUploaded
+		file.state.Store(fsFileStateUploaded)
 		logServer.Info(1, "fs uploading->uploaded", "sessionID", session.sessionID, clientFileName)
 		launchCompilerOnServerOnReadySessions(s, session.client) // other sessions could also be waiting for this file, we should check all
 		_ = stream.Send(&pb.UploadFileReply{})

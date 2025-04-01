@@ -86,7 +86,7 @@ func (session *Session) PrepareServerCompilerCmdLine(noccServer *NoccServer, cli
 // Note, that it's called for sessions that don't exist in obj cache.
 func (session *Session) StartCompilingObjIfPossible(noccServer *NoccServer) {
 	for _, file := range session.files {
-		if file.state != fsFileStateUploaded {
+		if file.state.Load() != fsFileStateUploaded {
 			return
 		}
 	}

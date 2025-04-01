@@ -36,7 +36,7 @@ type fileInClientDir struct {
 	fileSize   int64
 	fileSHA256 common.SHA256
 
-	state           int // fsFileState*
+	state           atomic.Int32 // fsFileState*
 	uploadStartTime time.Time
 
 	serverFileName string // abs path, see Client.MapClientFileNameToServerAbs
@@ -65,7 +65,7 @@ func (client *Client) makeNewFile(clientFileName string, fileSize int64, fileSHA
 		fileSize:        fileSize,
 		fileSHA256:      fileSHA256,
 		serverFileName:  client.MapClientFileNameToServerAbs(clientFileName),
-		state:           fsFileStateJustCreated,
+		state:           atomic.Int32{},
 		uploadStartTime: time.Now(),
 	}
 }
