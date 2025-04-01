@@ -75,7 +75,6 @@ func runInSocks5(proxyAddr string) (grpc.DialOption, error) {
 	}
 
 	customDialer := func(ctx context.Context, addr string) (net.Conn, error) {
-
 		return dialer.Dial("tcp", addr)
 	}
 

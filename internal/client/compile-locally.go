@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"syscall"
 )
 
 // LocalCxxLaunch describes an invocation when it's executed locally, not remotely.
@@ -17,23 +18,33 @@ type LocalCxxLaunch struct {
 	cwd     string
 	compiler string
 	cmdLine []string
+	uid int
+	gid int
 }
 
 func (localCxx *LocalCxxLaunch) RunCxxLocally() (exitCode int, stdout []byte, stderr []byte) {
 	logClient.Info(0, "compile locally", localCxx.cmdLine)
 
+	var cxxStdout, cxxStderr bytes.Buffer
 	cxxCommand := exec.Command(localCxx.compiler, localCxx.cmdLine...)
 	cxxCommand.Dir = localCxx.cwd
-	var cxxStdout, cxxStderr bytes.Buffer
 	cxxCommand.Stdout = &cxxStdout
 	cxxCommand.Stderr = &cxxStderr
+	cxxCommand.SysProcAttr = &syscall.SysProcAttr{}
+	cxxCommand.SysProcAttr.Credential = &syscall.Credential{
+	    Uid: uint32(localCxx.uid),
+	    Gid: uint32(localCxx.gid),
+	}
+
 	err := cxxCommand.Run()
 
 	exitCode = cxxCommand.ProcessState.ExitCode()
 	stdout = cxxStdout.Bytes()
 	stderr = cxxStderr.Bytes()
+
 	if len(stderr) == 0 && err != nil {
 		stderr = fmt.Appendln(nil, err)
 	}
+	
 	return
 }

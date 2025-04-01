@@ -263,7 +263,7 @@ func (daemon *Daemon) FallbackToLocalCxx(req DaemonSockRequest, reason error) Da
 	}
 
 	daemon.localCxxThrottle <- struct{}{}
-	localCxx := LocalCxxLaunch{req.Cwd, req.Compiler, req.CmdLine}
+	localCxx := LocalCxxLaunch{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid}
 	reply.ExitCode, reply.Stdout, reply.Stderr = localCxx.RunCxxLocally()
 	<-daemon.localCxxThrottle
 

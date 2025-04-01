@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"nocc/internal/common"
 	"os"
 	"strings"
 	"unicode"
@@ -67,9 +68,9 @@ func (dFile *DepFile) WriteToBytes() []byte {
 }
 
 // WriteToFile outputs a filled dFile as .o.d file
-func (dFile *DepFile) WriteToFile(depFileName string) error {
+func (dFile *DepFile) WriteToFile(depFileName string, uid int, gid int) error {
 	asBytes := dFile.WriteToBytes()
-	return os.WriteFile(depFileName, asBytes, os.ModePerm)
+	return common.WriteFile(depFileName, asBytes, uid, gid)
 }
 
 // parseSkipSpaces moves offset to the first non-space
