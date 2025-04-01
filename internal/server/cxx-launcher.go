@@ -7,21 +7,11 @@ import (
 	"os/exec"
 	"path"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
 type CompilerLauncher struct {
 	serverCompilerThrottle chan struct{}
-
-	nSessionsReadyButWaiting int64
-	nSessionsNowCompiling    int64
-
-	totalCalls           int64
-	totalDurationMs      int64
-	more10secCount       int64
-	more30secCount       int64
-	nonZeroExitCodeCount int64
 }
 
 func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher, error) {
@@ -39,57 +29,13 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 // Currently, amount of max parallel C++ processes is an option provided at start up
 // (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
 func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(noccServer *NoccServer, session *Session) {
-	atomic.AddInt64(&compilerLauncher.nSessionsReadyButWaiting, 1)
 	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
 
-	atomic.AddInt64(&compilerLauncher.nSessionsReadyButWaiting, -1)
-	curParallelCount := atomic.AddInt64(&compilerLauncher.nSessionsNowCompiling, 1)
-
-	logServer.Info(1, "launch compiler #", curParallelCount, "sessionID", session.sessionID, "clientID", session.client.clientID, session.compilerCmdLine)
+	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", session.client.clientID, session.compilerCmdLine)
 	compilerLauncher.launchServerCompilerForCpp(session, noccServer) // blocking until compiler ends
-
-	atomic.AddInt64(&compilerLauncher.nSessionsNowCompiling, -1)
-	atomic.AddInt64(&compilerLauncher.totalCalls, 1)
-	atomic.AddInt64(&compilerLauncher.totalDurationMs, int64(session.compilerDuration))
-
-	if session.compilerExitCode != 0 {
-		atomic.AddInt64(&compilerLauncher.nonZeroExitCodeCount, 1)
-	} else if session.compilerDuration > 30000 {
-		atomic.AddInt64(&compilerLauncher.more30secCount, 1)
-	} else if session.compilerDuration > 10000 {
-		atomic.AddInt64(&compilerLauncher.more10secCount, 1)
-	}
 
 	<-compilerLauncher.serverCompilerThrottle
 	session.PushToClientReadyChannel()
-}
-
-func (compilerLauncher *CompilerLauncher) GetNowCompilingSessionsCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.nSessionsNowCompiling)
-}
-
-func (compilerLauncher *CompilerLauncher) GetWaitingInQueueSessionsCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.nSessionsReadyButWaiting)
-}
-
-func (compilerLauncher *CompilerLauncher) GetTotalcompilerCallsCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.totalCalls)
-}
-
-func (compilerLauncher *CompilerLauncher) GetTotalcompilerDurationMilliseconds() int64 {
-	return atomic.LoadInt64(&compilerLauncher.totalDurationMs)
-}
-
-func (compilerLauncher *CompilerLauncher) GetMore10secCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.more10secCount)
-}
-
-func (compilerLauncher *CompilerLauncher) GetMore30secCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.more30secCount)
-}
-
-func (compilerLauncher *CompilerLauncher) GetNonZeroExitCodeCount() int64 {
-	return atomic.LoadInt64(&compilerLauncher.nonZeroExitCodeCount)
 }
 
 func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, noccServer *NoccServer) {
