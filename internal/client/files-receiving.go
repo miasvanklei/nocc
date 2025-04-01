@@ -104,7 +104,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		invocation := fr.daemon.FindInvocationBySessionID(firstChunk.SessionID)
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
-			if firstChunk.ExitCode == 0 {
+			if firstChunk.CompilerExitCode == 0 {
 				if err, _ = receiveObjFileByChunks(stream, firstChunk, os.Getuid(), os.Getgid(), "/tmp/nocc-dev-null"); err != nil {
 					fr.RecreateReceiveStreamOrQuit(cancelFunc, err)
 					return
@@ -113,14 +113,14 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			continue
 		}
 
-		invocation.compilerExitCode = int(firstChunk.ExitCode)
+		invocation.compilerExitCode = int(firstChunk.CompilerExitCode)
 		invocation.compilerStdout = firstChunk.CompilerStdout
 		invocation.compilerStderr = firstChunk.CompilerStderr
 		invocation.compilerDuration = firstChunk.CompilerDuration
 		invocation.summary.nBytesReceived += int(firstChunk.FileSize)
 
 		// non-zero exitCode means a bug in cpp source code and doesn't require local fallback
-		if firstChunk.ExitCode != 0 {
+		if firstChunk.CompilerExitCode != 0 {
 			invocation.DoneRecvObj(nil)
 			continue
 		}

@@ -63,7 +63,7 @@ message OpenReceiveStreamRequest {
 
 message RecvCompiledObjChunkReply {
     uint32 SessionID = 1;
-    int32 ExitCode = 2;
+    int32 CompilerExitCode = 2;
     bytes CompilerStdout = 3;
     bytes CompilerStderr = 4;
     int32 CompilerDuration = 5;

@@ -296,7 +296,7 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 			if session.compilerExitCode != 0 {
 				err := stream.Send(&pb.RecvCompiledObjChunkReply{
 					SessionID:        session.sessionID,
-					ExitCode:         session.compilerExitCode,
+					CompilerExitCode:         session.compilerExitCode,
 					CompilerStdout:   session.compilerStdout,
 					CompilerStderr:   session.compilerStderr,
 					CompilerDuration: session.compilerDuration,
