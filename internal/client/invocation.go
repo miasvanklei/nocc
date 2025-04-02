@@ -57,18 +57,45 @@ type Invocation struct {
 }
 
 func isSourceFileName(fileName string) bool {
-	return strings.HasSuffix(fileName, ".cpp") ||
-		strings.HasSuffix(fileName, ".cc") ||
-		strings.HasSuffix(fileName, ".cxx") ||
-		strings.HasSuffix(fileName, ".c") ||
-		strings.HasSuffix(fileName, ".C") ||
-		strings.HasSuffix(fileName, ".m") ||
-		strings.HasSuffix(fileName, ".mm")
+	return isCsourceFileName(fileName) ||
+		isCXXSourceFileName(fileName) ||
+		isObjCSourceFileName(fileName) ||
+		isObjCXXSourceFileName(fileName)
+}
 
+func isCsourceFileName(fileName string) bool {
+	return strings.HasSuffix(fileName, ".c") ||
+		strings.HasSuffix(fileName, ".i")
+}
+
+func isCXXSourceFileName(fileName string) bool {
+	return strings.HasSuffix(fileName, ".cpp") ||
+		strings.HasSuffix(fileName, ".cxx") ||
+		strings.HasSuffix(fileName, ".cc") ||
+		strings.HasSuffix(fileName, ".C") ||
+		strings.HasSuffix(fileName, ".CC") ||
+		strings.HasSuffix(fileName, ".cp") ||
+		strings.HasSuffix(fileName, ".CPP") ||
+		strings.HasSuffix(fileName, ".c++") ||
+		strings.HasSuffix(fileName, ".C++") ||
+		strings.HasSuffix(fileName, ".CXX") ||
+		strings.HasSuffix(fileName, ".ii")
+}
+
+func isObjCSourceFileName(fileName string) bool {
+	return strings.HasSuffix(fileName, ".m") ||
+		strings.HasSuffix(fileName, ".mi")
+}
+
+func isObjCXXSourceFileName(fileName string) bool {
+	return strings.HasSuffix(fileName, ".mm") ||
+		strings.HasSuffix(fileName, ".M") ||
+		strings.HasSuffix(fileName, ".mii")
 }
 
 func isHeaderFileName(fileName string) bool {
 	return strings.HasSuffix(fileName, ".h") ||
+		strings.HasSuffix(fileName, ".H") ||
 		strings.HasSuffix(fileName, ".hh") ||
 		strings.HasSuffix(fileName, ".hxx") ||
 		strings.HasSuffix(fileName, ".hpp")

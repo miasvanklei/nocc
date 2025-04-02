@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -96,16 +95,15 @@ func (dirs *IncludeDirs) Count() int {
 	return len(dirs.dirsI) + len(dirs.dirsIquote) + len(dirs.dirsIsystem) + len(dirs.filesI)
 }
 
-func (dirs *IncludeDirs) AsIncArgs(compiler string) []string {
+func (dirs *IncludeDirs) AsIncArgs(filename string) []string {
 	iArgs := make([]string, 0, 2)
 
-	re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
-	if !dirs.stdincxx && re.MatchString(compiler) {
-		iArgs = append(iArgs, "-nostdinc++")
-	}
-
 	if !dirs.stdincxx {
-		iArgs = append(iArgs, "-nostdinc")
+		if isCsourceFileName(filename) || isObjCSourceFileName(filename) {
+			iArgs = append(iArgs, "-nostdinc")
+		} else {
+			iArgs = append(iArgs, "-nostdinc++")
+		}
 	}
 
 	return iArgs
