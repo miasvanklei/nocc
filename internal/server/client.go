@@ -18,6 +18,8 @@ const (
 	fsFileStateUploading
 	fsFileStateUploadError
 	fsFileStateUploaded
+	fsFileStatePchCompiling
+	fsFileStatePchCompiled
 )
 
 // fileInClientDir describes a file on a server file system inside a client working dir.
@@ -79,7 +81,6 @@ func (client *Client) MapClientFileNameToServerAbs(clientFileName string) string
 		if IsSystemHeaderPath(clientFileName) {
 			return clientFileName
 		}
-		return client.workingDir + clientFileName
 	}
 	return path.Join(client.workingDir, clientFileName)
 }

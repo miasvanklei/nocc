@@ -8,7 +8,6 @@ import (
 	"path"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -32,7 +31,6 @@ type NoccServer struct {
 
 	ActiveClients    *ClientsStorage
 	CompilerLauncher *CompilerLauncher
-	PchCompilation   *PchCompilation
 
 	SystemHeaders *SystemHeadersCache
 	SrcFileCache  *SrcFileCache
@@ -147,15 +145,6 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 				file.state.Store(fsFileStateUploaded)
 				continue
 			}
-			if s.SrcFileCache.CreateHardLinkFromCache(file.serverFileName, file.fileSHA256) {
-				logServer.Info(2, "file", file.serverFileName, "is in src-cache, no need to upload")
-				file.state.Store(fsFileStateUploaded)
-
-				if strings.HasSuffix(file.serverFileName, ".nocc-pch") {
-					_ = s.PchCompilation.CreateHardLinkFromRealPch(file.serverFileName, file.fileSHA256)
-				}
-				continue
-			}
 
 			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, client.MapServerAbsToClientFileName(file.serverFileName))
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
@@ -229,16 +218,6 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 		logServer.Info(2, "received", file.fileSize, "bytes", "sessionID", session.sessionID, clientFileName)
 		if file.fileSize > 256*1024 {
 			logServer.Info(0, "large file received", file.fileSize, "sessionID", session.sessionID, clientFileName)
-		}
-
-		// after uploading an own pch file, it's immediately compiled, resulting in .h and .gch/.pch
-		if strings.HasSuffix(file.serverFileName, ".nocc-pch") {
-			err = s.PchCompilation.CompileOwnPchOnServer(s, file.serverFileName)
-			if err != nil {
-				file.state.Store(fsFileStateUploadError)
-				logServer.Error("can't compile own pch file", clientFileName, err)
-				return fmt.Errorf("can't compile pch file %q: %v", clientFileName, err)
-			}
 		}
 
 		file.state.Store(fsFileStateUploaded)

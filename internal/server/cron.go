@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Cron calls doCron(), which ticks in the background and used to write stats, delete inactive clients, etc.
+// Cron calls doCron(), which ticks in the background and used to delete inactive clients, etc.
 type Cron struct {
 	stopFlag bool
 	signals  chan os.Signal

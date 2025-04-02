@@ -107,12 +107,7 @@ func main() {
 	if err != nil {
 		failedStart("Failed to init obj file cache", err)
 	}
-
-	s.PchCompilation, err = server.MakePchCompilation(prepareEmptyDir(cppStoreDir, "pch"))
-	if err != nil {
-		failedStart("Failed to init pch compilation", err)
-	}
-
+	
 	s.GRPCServer = grpc.NewServer()
 	pb.RegisterCompilationServiceServer(s.GRPCServer, s)
 
