@@ -121,12 +121,3 @@ func (session *Session) StartCompilingObjIfPossible(noccServer *NoccServer) {
 		go noccServer.CompilerLauncher.LaunchCompilerWhenPossible(noccServer, session)
 	}
 }
-
-func (session *Session) PushToClientReadyChannel() {
-	// a client could have disconnected while compiler was working, then chanDisconnected is closed
-	select {
-	case <-session.client.chanDisconnected:
-	case session.client.chanReadySessions <- session:
-		// note, that if this chan is full, this 'case' (and this function call) is blocking
-	}
-}

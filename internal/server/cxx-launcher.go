@@ -35,7 +35,7 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(noccServer 
 	compilerLauncher.launchServerCompilerForCpp(session, noccServer) // blocking until compiler ends
 
 	<-compilerLauncher.serverCompilerThrottle
-	session.PushToClientReadyChannel()
+	session.client.PushToClientReadyChannel(session)
 }
 
 func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, noccServer *NoccServer) {

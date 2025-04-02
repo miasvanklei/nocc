@@ -116,7 +116,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.InputFile)
 		client.RegisterCreatedSession(session)
-		session.PushToClientReadyChannel()
+		client.PushToClientReadyChannel(session)
 
 		return &pb.StartCompilationSessionReply{}, nil
 	}

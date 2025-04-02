@@ -244,3 +244,12 @@ func (client *Client) FilesCount() int64 {
 	client.mu.RUnlock()
 	return int64(filesCount)
 }
+
+func (client *Client) PushToClientReadyChannel(session *Session) {
+	// a client could have disconnected while compiler was working, then chanDisconnected is closed
+	select {
+	case <-client.chanDisconnected:
+	case client.chanReadySessions <- session:
+		// note, that if this chan is full, this 'case' (and this function call) is blocking
+	}
+}
