@@ -19,14 +19,15 @@ import (
 type Session struct {
 	sessionID uint32
 
-	InputFile  string // as-is from a client cmd line (relative to compilerCwd on a server-side)
-	OutputFile string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
-	compilerCwd     string // cwd for the compiler on a server-side (= client.workingDir + clientCwd)
-	compilerName    string // g++ / clang / etc.
-	compilerArgs []string
-	compilerIDirs    []string
+	InputFile     string // as-is from a client cmd line (relative to compilerCwd on a server-side)
+	OutputFile    string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
+	compilerCwd   string // cwd for the compiler on a server-side (= client.workingDir + clientCwd)
+	compilerName  string // g++ / clang / etc.
+	compilerArgs  []string
+	compilerIDirs []string
 
-	files  []*fileInClientDir
+	files   []*fileInClientDir
+	pchFile *fileInClientDir
 
 	objCacheKey        common.SHA256
 	objCacheExists     bool
@@ -40,30 +41,44 @@ type Session struct {
 
 func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*Session, error) {
 	newSession := &Session{
-		sessionID: in.SessionID,
-		files:     make([]*fileInClientDir, len(in.RequiredFiles)),
-		compilerName:   in.Compiler,
-		InputFile: in.InputFile,
-		compilerCwd: client.MapClientFileNameToServerAbs(in.Cwd),
-		compilerArgs: in.Args,
+		sessionID:     in.SessionID,
+		files:         make([]*fileInClientDir, len(in.RequiredFiles)),
+		compilerName:  in.Compiler,
+		InputFile:     in.InputFile,
+		compilerCwd:   client.MapClientFileNameToServerAbs(in.Cwd),
+		compilerArgs:  in.Args,
 		compilerIDirs: in.IDirs,
 	}
 
 	for index, meta := range in.RequiredFiles {
-		fileSHA256 := common.SHA256{B0_7: meta.SHA256_B0_7, B8_15: meta.SHA256_B8_15, B16_23: meta.SHA256_B16_23, B24_31: meta.SHA256_B24_31}
-		file, err := client.StartUsingFileInSession(meta.FileName, meta.FileSize, fileSHA256)
-		newSession.files[index] = file
-		// the only reason why a session can't be created is a dependency conflict:
-		// previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2
+		file, err := startUsingFileInSession(client, meta)
 		if err != nil {
 			return nil, err
 		}
+		newSession.files[index] = file
+	}
+
+	// if the client sends a pch file, we need to start using it in the session
+	if in.RequiredPchFile != nil {
+		file, err := startUsingFileInSession(client, in.RequiredPchFile)
+		if err != nil {
+			return nil, err
+		}
+		newSession.pchFile = file
+		newSession.files = append(newSession.files, file)
 	}
 
 	// note, that we don't add newSession to client.sessions: it's just created, not registered
 	// (so, it won't be enumerated in a loop inside GetSessionsNotStartedCompilation until registered)
 
 	return newSession, nil
+}
+
+// the only reason why a session can't be created is a dependency conflict:
+// previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2
+func startUsingFileInSession(client *Client, meta *pb.FileMetadata) (*fileInClientDir, error) {
+	fileSHA256 := common.SHA256{B0_7: meta.SHA256_B0_7, B8_15: meta.SHA256_B8_15, B16_23: meta.SHA256_B16_23, B24_31: meta.SHA256_B24_31}
+	return client.StartUsingFileInSession(meta.FileName, meta.FileSize, fileSHA256)
 }
 
 // StartCompilingObjIfPossible executes compiler if all dependent files (.cpp/.h/.nocc-pch/etc.) are ready.

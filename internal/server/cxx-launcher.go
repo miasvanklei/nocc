@@ -2,10 +2,14 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"nocc/internal/common"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -23,6 +27,7 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 		serverCompilerThrottle: make(chan struct{}, maxParallelCompilerProcesses),
 	}, nil
 }
+
 // PrepareServercompilerCmdLine prepares a command line for compiler invocation.
 // Notably, options like -Wall and -fpch-preprocess are pushed as is,
 // but include dirs like /home/alice/headers need to be remapped to point to server dir.
@@ -58,6 +63,39 @@ func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile s
 	return append(compilerCmdLine, "-o", outputFile, cppInFile)
 }
 
+func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) error {
+	compilerLauncher.serverCompilerThrottle <- struct{}{}
+
+	pchInvocation, err := ParsePchFile(session.pchFile)
+	if err != nil {
+		return err
+	}
+
+	var objCacheKey common.SHA256
+	objOutputFile := client.MapClientFileNameToServerAbs(pchInvocation.OutputFile)
+	objCacheKey = common.SHA256{}
+	objCacheKey.FromLongHexString(pchInvocation.Hash)
+	if pathInObjCache := objFileCache.LookupInCache(objCacheKey); len(pathInObjCache) != 0 {
+		return os.Link(pathInObjCache, objOutputFile)
+	}
+
+	cxxCwd := client.MapClientFileNameToServerAbs(pchInvocation.Cwd)
+	args := PrepareServerCompilerCmdLine(client, pchInvocation.InputFile, objOutputFile, pchInvocation.Args, pchInvocation.IDirs)
+	err = launchServerCompilerForPch(cxxCwd, pchInvocation.Compiler, args)
+	<-compilerLauncher.serverCompilerThrottle
+
+	if err != nil {
+		return err
+	}
+
+	if stat, err := os.Stat(objOutputFile); err == nil {
+		fileNameInCacheDir := fmt.Sprintf("%s.%s", path.Base(pchInvocation.InputFile), filepath.Ext(pchInvocation.OutputFile))
+		_ = objFileCache.SaveFileToCache(objOutputFile, fileNameInCacheDir, objCacheKey, stat.Size())
+	}
+
+	return nil
+}
+
 // LaunchCompilerWhenPossible launches the C++ compiler on a server managing a waiting queue.
 // The purpose of a waiting queue is not to over-utilize server resources at peak times.
 // Currently, amount of max parallel C++ processes is an option provided at start up
@@ -72,6 +110,29 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 
 	<-compilerLauncher.serverCompilerThrottle
 	client.PushToClientReadyChannel(session)
+}
+
+func launchServerCompilerForPch(cwd string, compilerName string, args []string) error {
+	var cxxStdout, cxxStderr bytes.Buffer
+	compilerCommand := exec.Command(compilerName, args...)
+	compilerCommand.Dir = cwd
+	compilerCommand.Stderr = &cxxStderr
+	compilerCommand.Stdout = &cxxStdout
+
+	logServer.Info(1, "launch cxx for pch compilation", "cwd", cwd)
+	_ = compilerCommand.Run()
+
+	compilerExitCode := compilerCommand.ProcessState.ExitCode()
+
+	if compilerExitCode != 0 {
+		logServer.Error("the C++ compiler exited with code", compilerExitCode,
+			"\ncmdLine:", compilerName, args,
+			"\ncxxStdout:", strings.TrimSpace(cxxStdout.String()),
+			"\ncxxStderr:", strings.TrimSpace(cxxStderr.String()))
+		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", compilerExitCode, cxxStdout.String()+cxxStderr.String())
+	}
+
+	return nil
 }
 
 func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLine []string, objFileCache *ObjFileCache) {
@@ -124,4 +185,17 @@ func patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
 	}
 
 	return bytes.ReplaceAll(stdout, []byte(client.workingDir), []byte{})
+}
+
+func ParsePchFile(pchFile *fileInClientDir) (pchCompilation *common.PCHInvocation, err error) {
+	file, err := os.Open(pchFile.serverFileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	bytes, _ := io.ReadAll(file)
+	err = json.Unmarshal(bytes, pchCompilation)
+
+	return
 }
