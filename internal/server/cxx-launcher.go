@@ -109,6 +109,16 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 	session.LaunchServerCompilerForCpp(client, compilerCmdLine, objFileCache) // blocking until compiler ends
 
 	<-compilerLauncher.serverCompilerThrottle
+
+	// save to obj cache (to be safe, only if compiler output is empty)
+	if !session.objCacheKey.IsEmpty() {
+		if session.compilerExitCode == 0 && len(session.compilerStdout) == 0 && len(session.compilerStderr) == 0 {
+			if stat, err := os.Stat(session.OutputFile); err == nil {
+				_ = objFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
+			}
+		}
+	}
+
 	client.PushToClientReadyChannel(session)
 }
 
@@ -162,15 +172,6 @@ func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLi
 			"\ncompilerStderr:", strings.TrimSpace(string(session.compilerStderr)))
 	} else if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
-	}
-
-	// save to obj cache (to be safe, only if compiler output is empty)
-	if !session.objCacheKey.IsEmpty() {
-		if session.compilerExitCode == 0 && len(session.compilerStdout) == 0 && len(session.compilerStderr) == 0 {
-			if stat, err := os.Stat(session.OutputFile); err == nil {
-				_ = objFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
-			}
-		}
 	}
 
 	session.compilerStdout = patchStdoutDropServerPaths(client, session.compilerStdout)

@@ -39,7 +39,7 @@ type NoccServer struct {
 
 func launchCompilerOnServerOnReadySessions(noccServer *NoccServer, client *Client) {
 	for _, session := range client.GetSessionsNotStartedCompilation() {
-		session.StartCompilingObjIfPossible(noccServer, client)
+		session.StartCompilingObjIfPossible(client, noccServer.CompilerLauncher, noccServer.ObjFileCache)
 	}
 }
 

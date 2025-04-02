@@ -84,14 +84,29 @@ func startUsingFileInSession(client *Client, meta *pb.FileMetadata) (*fileInClie
 // StartCompilingObjIfPossible executes compiler if all dependent files (.cpp/.h/.nocc-pch/etc.) are ready.
 // They have either been uploaded by the client or already taken from src cache.
 // Note, that it's called for sessions that don't exist in obj cache.
-func (session *Session) StartCompilingObjIfPossible(noccServer *NoccServer, client *Client) {
+func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
 	for _, file := range session.files {
 		if file.state.Load() != fsFileStateUploaded {
 			return
 		}
 	}
 
+	if session.pchFile != nil {
+		if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
+			err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
+			if err != nil {
+				session.pchFile.state.Store(fsFileStateUploadError)
+				logServer.Error("can't compile own pch file", session.pchFile, err)
+				return
+			}
+
+			session.pchFile.state.Store(fsFileStatePchCompiled)
+		} else if session.pchFile.state.Load() != fsFileStatePchCompiled {
+			return
+		}
+	}
+
 	if session.compilationStarted.Swap(1) == 0 {
-		go noccServer.CompilerLauncher.LaunchCompilerWhenPossible(client, session, noccServer.ObjFileCache)
+		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
 	}
 }
