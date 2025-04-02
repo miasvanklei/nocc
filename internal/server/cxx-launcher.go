@@ -23,23 +23,59 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 		serverCompilerThrottle: make(chan struct{}, maxParallelCompilerProcesses),
 	}, nil
 }
+// PrepareServercompilerCmdLine prepares a command line for compiler invocation.
+// Notably, options like -Wall and -fpch-preprocess are pushed as is,
+// but include dirs like /home/alice/headers need to be remapped to point to server dir.
+func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile string, compilerArgs []string, compilerIDirs []string) []string {
+	var cppInFile string
+	// cppInFile is as-is from a client cmd line:
+	// * "/abs/path" becomes "client.workingDir/abs/path"
+	//    (except for system files, /usr/include left unchanged)
+	// * "rel/path" (relative to clientCwd) is left as-is (becomes relative to session.compilerCwd)
+	//    (for correct __FILE__ expansion and other minor specifics)
+	if inputFile[0] == '/' {
+		cppInFile = client.MapClientFileNameToServerAbs(inputFile)
+	} else {
+		cppInFile = inputFile
+	}
+
+	compilerCmdLine := make([]string, 0, len(compilerIDirs)+len(compilerArgs)+3)
+
+	// loop through -I {dir} / -include {file} / etc. (format is guaranteed), converting client {dir} to server path
+	for i := 0; i < len(compilerIDirs); i += 2 {
+		arg := compilerIDirs[i]
+		serverIdir := client.MapClientFileNameToServerAbs(compilerIDirs[i+1])
+		compilerCmdLine = append(compilerCmdLine, arg, serverIdir)
+	}
+
+	for i := 0; i < len(compilerArgs); i++ {
+		compilerArg := FilePrefixMapOption(compilerArgs[i], client.workingDir)
+
+		compilerCmdLine = append(compilerCmdLine, compilerArg)
+	}
+
+	// build final string
+	return append(compilerCmdLine, "-o", outputFile, cppInFile)
+}
 
 // LaunchCompilerWhenPossible launches the C++ compiler on a server managing a waiting queue.
 // The purpose of a waiting queue is not to over-utilize server resources at peak times.
 // Currently, amount of max parallel C++ processes is an option provided at start up
 // (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
-func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(session *Session, client *Client, objFileCache *ObjFileCache) {
+func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) {
 	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
 
-	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, session.compilerCmdLine)
-	compilerLauncher.launchServerCompilerForCpp(session, client, objFileCache) // blocking until compiler ends
+	session.OutputFile = objFileCache.GenerateObjOutFileName(client, session)
+	compilerCmdLine := PrepareServerCompilerCmdLine(client, session.InputFile, session.OutputFile, session.compilerArgs, session.compilerIDirs)
+	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, compilerCmdLine)
+	session.LaunchServerCompilerForCpp(client, compilerCmdLine, objFileCache) // blocking until compiler ends
 
 	<-compilerLauncher.serverCompilerThrottle
 	client.PushToClientReadyChannel(session)
 }
 
-func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, client *Client, objFileCache *ObjFileCache) {
-	compilerCommand := exec.Command(session.compilerName, session.compilerCmdLine...)
+func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLine []string, objFileCache *ObjFileCache) {
+	compilerCommand := exec.Command(session.compilerName, compilerCmdLine...)
 	compilerCommand.Dir = session.compilerCwd
 	var compilerStdout, compilerStderr bytes.Buffer
 	compilerCommand.Stderr = &compilerStderr
@@ -57,7 +93,12 @@ func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Se
 	}
 
 	if session.compilerExitCode != 0 {
-		logServer.Error("the C++ compiler exited with code", session.compilerExitCode, "sessionID", session.sessionID, session.InputFile, "\ncompilerCwd:", session.compilerCwd, "\ncompilerCmdLine:", session.compilerName, session.compilerCmdLine, "\ncompilerStdout:", strings.TrimSpace(string(session.compilerStdout)), "\ncompilerStderr:", strings.TrimSpace(string(session.compilerStderr)))
+		logServer.Error("the C++ compiler exited with code", session.compilerExitCode,
+			"sessionID", session.sessionID, session.InputFile,
+			"\ncompilerCwd:", session.compilerCwd,
+			"\ncompilerCmdLine:", session.compilerName, compilerCmdLine,
+			"\ncompilerStdout:", strings.TrimSpace(string(session.compilerStdout)),
+			"\ncompilerStderr:", strings.TrimSpace(string(session.compilerStderr)))
 	} else if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
 	}
@@ -71,33 +112,13 @@ func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Se
 		}
 	}
 
-	session.compilerStdout = compilerLauncher.patchStdoutDropServerPaths(client, session.compilerStdout)
-	session.compilerStderr = compilerLauncher.patchStdoutDropServerPaths(client, session.compilerStderr)
-}
-
-func (compilerLauncher *CompilerLauncher) launchServercompilerForPch(compilerName string, compilerCmdLine []string, rootDir string) error {
-	compilerCommand := exec.Command(compilerName, compilerCmdLine...)
-	compilerCommand.Dir = rootDir
-	var compilerStdout, compilerStderr bytes.Buffer
-	compilerCommand.Stderr = &compilerStderr
-	compilerCommand.Stdout = &compilerStdout
-
-	logServer.Info(1, "launch compiler for pch compilation", "rootDir", rootDir)
-	_ = compilerCommand.Run()
-
-	compilerExitCode := compilerCommand.ProcessState.ExitCode()
-
-	if compilerExitCode != 0 {
-		logServer.Error("the C++ compiler exited with code pch", compilerExitCode, "\ncmdLine:", compilerName, compilerCmdLine, "\ncompilerStdout:", strings.TrimSpace(compilerStdout.String()), "\ncompilerStderr:", strings.TrimSpace(compilerStderr.String()))
-		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", compilerExitCode, compilerStdout.String()+compilerStderr.String())
-	}
-
-	return nil
+	session.compilerStdout = patchStdoutDropServerPaths(client, session.compilerStdout)
+	session.compilerStderr = patchStdoutDropServerPaths(client, session.compilerStderr)
 }
 
 // patchStdoutDropServerPaths replaces /tmp/nocc/cpp/clients/clientID/path/to/file.cpp with /path/to/file.cpp.
 // It's very handy to send back stdout/stderr without server paths.
-func (compilerLauncher *CompilerLauncher) patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
+func patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
 	if len(stdout) == 0 {
 		return stdout
 	}

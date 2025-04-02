@@ -23,7 +23,8 @@ type Session struct {
 	OutputFile string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
 	compilerCwd     string // cwd for the compiler on a server-side (= client.workingDir + clientCwd)
 	compilerName    string // g++ / clang / etc.
-	compilerCmdLine []string
+	compilerArgs []string
+	compilerIDirs    []string
 
 	files  []*fileInClientDir
 
@@ -42,7 +43,10 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 		sessionID: in.SessionID,
 		files:     make([]*fileInClientDir, len(in.RequiredFiles)),
 		compilerName:   in.Compiler,
-		InputFile: in.InputFile, // as specified in a client cmd line invocation (relative to in.Cwd or abs on a client file system)
+		InputFile: in.InputFile,
+		compilerCwd: client.MapClientFileNameToServerAbs(in.Cwd),
+		compilerArgs: in.Args,
+		compilerIDirs: in.IDirs,
 	}
 
 	for index, meta := range in.RequiredFiles {
@@ -62,50 +66,6 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 	return newSession, nil
 }
 
-// PrepareServercompilerCmdLine prepares a command line for compiler invocation.
-// Notably, options like -Wall and -fpch-preprocess are pushed as is,
-// but include dirs like /home/alice/headers need to be remapped to point to server dir.
-func (session *Session) PrepareServerCompilerCmdLine(noccServer *NoccServer, client *Client, clientCwd string, compilerArgs []string, compilerIDirs []string) {
-	session.OutputFile = noccServer.ObjFileCache.GenerateObjOutFileName(client, session)
-
-	var inputFile string
-	// old clients that don't send this field (they send abs cppInFile)
-	// todo delete later, after upgrading all clients
-	if clientCwd == "" {
-		inputFile = client.MapClientFileNameToServerAbs(session.InputFile)
-		session.compilerCwd = client.workingDir
-	} else {
-		// session.cppInFile is as-is from a client cmd line:
-		// * "/abs/path" becomes "client.workingDir/abs/path"
-		//    (except for system files, /usr/include left unchanged)
-		// * "rel/path" (relative to clientCwd) is left as-is (becomes relative to session.compilerCwd)
-		//    (for correct __FILE__ expansion and other minor specifics)
-		if session.InputFile[0] == '/' {
-			inputFile = client.MapClientFileNameToServerAbs(session.InputFile)
-		} else {
-			inputFile = session.InputFile
-		}
-		session.compilerCwd = client.MapClientFileNameToServerAbs(clientCwd)
-	}
-
-	compilerCmdLine := make([]string, 0, len(compilerIDirs)+len(compilerArgs)+3)
-
-	// loop through -I {dir} / -include {file} / etc. (format is guaranteed), converting client {dir} to server path
-	for i := 0; i < len(compilerIDirs); i += 2 {
-		arg := compilerIDirs[i]
-		serverIdir := client.MapClientFileNameToServerAbs(compilerIDirs[i+1])
-		compilerCmdLine = append(compilerCmdLine, arg, serverIdir)
-	}
-
-	for i := 0; i < len(compilerArgs); i++ {
-		compilerArg := FilePrefixMapOption(compilerArgs[i], client.workingDir)
-
-		compilerCmdLine = append(compilerCmdLine, compilerArg)
-	}
-	// build final string
-	session.compilerCmdLine = append(compilerCmdLine, "-o", session.OutputFile, inputFile)
-}
-
 // StartCompilingObjIfPossible executes compiler if all dependent files (.cpp/.h/.nocc-pch/etc.) are ready.
 // They have either been uploaded by the client or already taken from src cache.
 // Note, that it's called for sessions that don't exist in obj cache.
@@ -117,6 +77,6 @@ func (session *Session) StartCompilingObjIfPossible(noccServer *NoccServer, clie
 	}
 
 	if session.compilationStarted.Swap(1) == 0 {
-		go noccServer.CompilerLauncher.LaunchCompilerWhenPossible(session, client, noccServer.ObjFileCache)
+		go noccServer.CompilerLauncher.LaunchCompilerWhenPossible(client, session, noccServer.ObjFileCache)
 	}
 }

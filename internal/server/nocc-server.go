@@ -123,7 +123,6 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 	// otherwise, we detect files that don't exist in src cache and request a client to upload them
 	// before restoring from src cache, ensure that all client dirs structure is mirrored to workingDir
-	session.PrepareServerCompilerCmdLine(s, client, in.Cwd, in.Args, in.IDirs)
 	client.MkdirAllForSession(session)
 
 	// here we deal with concurrency:
