@@ -69,6 +69,6 @@ func (cache *ObjFileCache) MakeObjCacheKey(compilerName string, compilerArgs []s
 }
 
 // GenerateObjOutFileName generates session.objOutFile (destination for C++ compiler launched on a server)
-func (cache *ObjFileCache) GenerateObjOutFileName(session *Session) string {
-	return fmt.Sprintf("%s/%s.%d.o", cache.objTmpDir, session.client.clientID, session.sessionID)
+func (cache *ObjFileCache) GenerateObjOutFileName(client *Client, session *Session) string {
+	return fmt.Sprintf("%s/%s.%d.o", cache.objTmpDir, client.clientID, session.sessionID)
 }

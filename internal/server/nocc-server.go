@@ -39,7 +39,7 @@ type NoccServer struct {
 
 func launchCompilerOnServerOnReadySessions(noccServer *NoccServer, client *Client) {
 	for _, session := range client.GetSessionsNotStartedCompilation() {
-		session.StartCompilingObjIfPossible(noccServer)
+		session.StartCompilingObjIfPossible(noccServer, client)
 	}
 }
 
@@ -100,7 +100,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 	session, err := CreateNewSession(in, client)
 	if err != nil {
-		logServer.Error("failed to open session", "clientID", in.ClientID, "sessionID", in.SessionID, err)
+		logServer.Error("failed to open session", "clientID", client.clientID, "sessionID", in.SessionID, err)
 		return nil, err
 	}
 
@@ -108,13 +108,13 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	// then we don't need to upload files from the client (and even don't need to link them from src cache)
 	// respond that we are waiting 0 files, and the client would immediately request for a compiled obj
 	// it's mostly a moment of optimization: avoid calling os.Link from src cache to working dir
-	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(in.Compiler, in.Args, session.files, in.InputFile)
+	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(session.compilerName, in.Args, session.files, session.InputFile)
 	if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
 		session.objCacheExists = true
 		session.OutputFile = pathInObjCache // stream back this file directly
 		session.compilationStarted.Store(1)      // client.GetSessionsNotStartedCompilation() will not return it
 
-		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", in.InputFile)
+		logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "from obj cache", session.InputFile)
 		client.RegisterCreatedSession(session)
 		client.PushToClientReadyChannel(session)
 
@@ -123,7 +123,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 
 	// otherwise, we detect files that don't exist in src cache and request a client to upload them
 	// before restoring from src cache, ensure that all client dirs structure is mirrored to workingDir
-	session.PrepareServerCompilerCmdLine(s, in.Cwd, in.Args, in.IDirs)
+	session.PrepareServerCompilerCmdLine(s, client, in.Cwd, in.Args, in.IDirs)
 	client.MkdirAllForSession(session)
 
 	// here we deal with concurrency:
@@ -165,7 +165,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 		}
 	}
 
-	logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "waiting", len(fileIndexesToUpload), "uploads", in.InputFile)
+	logServer.Info(0, "started", "sessionID", session.sessionID, "clientID", client.clientID, "waiting", len(fileIndexesToUpload), "uploads", session.InputFile)
 	client.RegisterCreatedSession(session)
 	launchCompilerOnServerOnReadySessions(s, client) // other sessions could also be waiting for files in src-cache
 
@@ -203,7 +203,7 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 		}
 
 		file := session.files[firstChunk.FileIndex]
-		clientFileName := session.client.MapServerAbsToClientFileName(file.serverFileName)
+		clientFileName := client.MapServerAbsToClientFileName(file.serverFileName)
 
 		if file.fileSize > 256*1024 {
 			logServer.Info(0, "start receiving large file", file.fileSize, "sessionID", session.sessionID, clientFileName)
@@ -222,7 +222,7 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 
 		file.state.Store(fsFileStateUploaded)
 		logServer.Info(1, "fs uploading->uploaded", "sessionID", session.sessionID, clientFileName)
-		launchCompilerOnServerOnReadySessions(s, session.client) // other sessions could also be waiting for this file, we should check all
+		launchCompilerOnServerOnReadySessions(s, client) // other sessions could also be waiting for this file, we should check all
 		_ = stream.Send(&pb.UploadFileReply{})
 		_ = s.SrcFileCache.SaveFileToCache(file.serverFileName, path.Base(file.serverFileName), file.fileSHA256, file.fileSize)
 

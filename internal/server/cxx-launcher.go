@@ -28,17 +28,17 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 // The purpose of a waiting queue is not to over-utilize server resources at peak times.
 // Currently, amount of max parallel C++ processes is an option provided at start up
 // (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
-func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(noccServer *NoccServer, session *Session) {
+func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(session *Session, client *Client, objFileCache *ObjFileCache) {
 	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
 
-	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", session.client.clientID, session.compilerCmdLine)
-	compilerLauncher.launchServerCompilerForCpp(session, noccServer) // blocking until compiler ends
+	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, session.compilerCmdLine)
+	compilerLauncher.launchServerCompilerForCpp(session, client, objFileCache) // blocking until compiler ends
 
 	<-compilerLauncher.serverCompilerThrottle
-	session.client.PushToClientReadyChannel(session)
+	client.PushToClientReadyChannel(session)
 }
 
-func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, noccServer *NoccServer) {
+func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Session, client *Client, objFileCache *ObjFileCache) {
 	compilerCommand := exec.Command(session.compilerName, session.compilerCmdLine...)
 	compilerCommand.Dir = session.compilerCwd
 	var compilerStdout, compilerStderr bytes.Buffer
@@ -66,13 +66,13 @@ func (compilerLauncher *CompilerLauncher) launchServerCompilerForCpp(session *Se
 	if !session.objCacheKey.IsEmpty() {
 		if session.compilerExitCode == 0 && len(session.compilerStdout) == 0 && len(session.compilerStderr) == 0 {
 			if stat, err := os.Stat(session.OutputFile); err == nil {
-				_ = noccServer.ObjFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
+				_ = objFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
 			}
 		}
 	}
 
-	session.compilerStdout = compilerLauncher.patchStdoutDropServerPaths(session.client, session.compilerStdout)
-	session.compilerStderr = compilerLauncher.patchStdoutDropServerPaths(session.client, session.compilerStderr)
+	session.compilerStdout = compilerLauncher.patchStdoutDropServerPaths(client, session.compilerStdout)
+	session.compilerStderr = compilerLauncher.patchStdoutDropServerPaths(client, session.compilerStderr)
 }
 
 func (compilerLauncher *CompilerLauncher) launchServercompilerForPch(compilerName string, compilerCmdLine []string, rootDir string) error {
