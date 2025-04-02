@@ -98,7 +98,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 		return nil, status.Errorf(codes.Unauthenticated, "clientID %s not found; probably, the server was restarted just now", in.ClientID)
 	}
 
-	session, err := client.CreateNewSession(in)
+	session, err := CreateNewSession(in, client)
 	if err != nil {
 		logServer.Error("failed to open session", "clientID", in.ClientID, "sessionID", in.SessionID, err)
 		return nil, err

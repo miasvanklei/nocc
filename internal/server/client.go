@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"nocc/internal/common"
-	"nocc/pb"
 )
 
 const (
@@ -90,33 +89,6 @@ func (client *Client) MapClientFileNameToServerAbs(clientFileName string) string
 // If serverFileName is /usr/local/include, it's left as is.
 func (client *Client) MapServerAbsToClientFileName(serverFileName string) string {
 	return strings.TrimPrefix(serverFileName, client.workingDir)
-}
-
-func (client *Client) CreateNewSession(in *pb.StartCompilationSessionRequest) (*Session, error) {
-	newSession := &Session{
-		sessionID: in.SessionID,
-		files:     make([]*fileInClientDir, len(in.RequiredFiles)),
-		compilerName:   in.Compiler,
-		InputFile: in.InputFile, // as specified in a client cmd line invocation (relative to in.Cwd or abs on a client file system)
-		client:    client,
-		// objOutFile is filled only in compiler is required to be called, see Session.PrepareServercompilerCmdLine()
-	}
-
-	for index, meta := range in.RequiredFiles {
-		fileSHA256 := common.SHA256{B0_7: meta.SHA256_B0_7, B8_15: meta.SHA256_B8_15, B16_23: meta.SHA256_B16_23, B24_31: meta.SHA256_B24_31}
-		file, err := client.StartUsingFileInSession(meta.FileName, meta.FileSize, fileSHA256)
-		newSession.files[index] = file
-		// the only reason why a session can't be created is a dependency conflict:
-		// previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// note, that we don't add newSession to client.sessions: it's just created, not registered
-	// (so, it won't be enumerated in a loop inside GetSessionsNotStartedCompilation until registered)
-
-	return newSession, nil
 }
 
 func (client *Client) RegisterCreatedSession(session *Session) {
