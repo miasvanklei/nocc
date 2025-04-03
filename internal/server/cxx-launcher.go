@@ -53,7 +53,7 @@ func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile s
 		compilerCmdLine = append(compilerCmdLine, arg, serverIdir)
 	}
 
-	for i := 0; i < len(compilerArgs); i++ {
+	for i := range compilerArgs {
 		compilerArg := FilePrefixMapOption(compilerArgs[i], client.workingDir)
 
 		compilerCmdLine = append(compilerCmdLine, compilerArg)
@@ -160,7 +160,7 @@ func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLi
 	session.compilerStdout = compilerStdout.Bytes()
 	session.compilerStderr = compilerStderr.Bytes()
 	if len(session.compilerStderr) == 0 && err != nil {
-		session.compilerStderr = []byte(fmt.Sprintln(err))
+		session.compilerStderr = fmt.Appendln(nil, err)
 	}
 
 	if session.compilerExitCode != 0 {
@@ -195,6 +195,7 @@ func ParsePchFile(pchFile *fileInClientDir) (pchCompilation *common.PCHInvocatio
 	}
 	defer file.Close()
 
+	pchCompilation = &common.PCHInvocation{}
 	bytes, _ := io.ReadAll(file)
 	err = json.Unmarshal(bytes, pchCompilation)
 
