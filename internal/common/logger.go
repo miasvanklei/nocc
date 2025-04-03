@@ -40,7 +40,7 @@ func MakeLogger(logFile string, verbosity int64, noLogsIfEmpty bool, duplicateTo
 }
 
 func formatStr(prefix string, v ...any) string {
-	return fmt.Sprintf("%s %s", prefix, fmt.Sprintln(v...))
+	return fmt.Sprintf("%s%s", prefix, fmt.Sprintln(v...))
 }
 
 func (logger *LoggerWrapper) Info(verbosity int, v ...any) {
