@@ -96,7 +96,9 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	addHFile := func(hFileName string, searchForPch bool) error {
 		if searchForPch {
-			pchFile, _ = fillSizeAndMTime(common.ReplaceFileExt(hFileName, ".nocc-pch"))
+			if pchFile == nil {
+				pchFile, _ = fillSizeAndMTime(common.ReplaceFileExt(hFileName, ".nocc-pch"))
+			}
 		}
 		hFile, err := fillSizeAndMTime(hFileName)
 		if err != nil {
@@ -107,7 +109,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 	}
 
 	for _, hFileName := range hFilesNames {
-		searchForPch := isSourceFileName(hFileName)
+		searchForPch := isHeaderFileName(hFileName)
 		err = addHFile(hFileName, searchForPch)
 		if err != nil {
 			return
