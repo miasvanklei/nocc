@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -90,7 +89,7 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompile
 		localCompilerThrottle: make(chan struct{}, maxLocalcompilerProcesses),
 		disableLocalCompiler:  maxLocalcompilerProcesses == 0,
 		activeInvocations:     make(map[uint32]*Invocation, 300),
-		includesDirs:         make(map[string]*IncludeDirs, 2),
+		includesDirs:          make(map[string]*IncludeDirs, 2),
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -272,34 +271,29 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 
 	daemon.localCompilerThrottle <- struct{}{}
 	localcompiler := LocalCompilerLaunch{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid}
-	reply.ExitCode, reply.Stdout, reply.Stderr = localcompiler.RuncompilerLocally()
+	reply.ExitCode, reply.Stdout, reply.Stderr = localcompiler.RunCompilerLocally()
 	<-daemon.localCompilerThrottle
 
 	return reply
 }
 
-func (daemon *Daemon) GetOrCreateIncludeDirs(compilerName string) *IncludeDirs {
+func (daemon *Daemon) SetOrCreateIncludeDirs(invocation *Invocation) {
 	daemon.mu.Lock()
-	includeDirs := daemon.includesDirs[compilerName]
-	if includeDirs == nil {
-		var err error
-		includeDirs := MakeIncludeDirs()
-		// Regular expression to match "++-" followed by digits
-		re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
-		if re.MatchString(compilerName) {
-			err = includeDirs.GetDefaultIncludeDirsOnLocal(compilerName, "c++")
-		} else {
-			err = includeDirs.GetDefaultIncludeDirsOnLocal(compilerName, "c")
-		}
-
-		if err != nil {
-			logClient.Error("failed to calc default include dirs for", compilerName, err)
-		}
-
-		daemon.includesDirs[compilerName] = &includeDirs
+	defer daemon.mu.Unlock()
+	includeDirs := daemon.includesDirs[invocation.compilerName]
+	if includeDirs != nil {
+		invocation.includeDirs = includeDirs
+		return
 	}
-	daemon.mu.Unlock()
-	return includeDirs
+
+	includeDirs = MakeIncludeDirs()
+	err := includeDirs.GetDefaultIncludeDirsOnLocal(invocation)
+
+	if err != nil {
+		logClient.Error("failed to calc default include dirs for", invocation.compilerName, err)
+	}
+
+	daemon.includesDirs[invocation.compilerName] = includeDirs
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {

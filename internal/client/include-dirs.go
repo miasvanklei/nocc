@@ -1,9 +1,9 @@
 package client
 
 import (
-	"bytes"
-	"os/exec"
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -17,8 +17,8 @@ type IncludeDirs struct {
 	stdincxx    bool     // -nostdinc++
 }
 
-func MakeIncludeDirs() IncludeDirs {
-	return IncludeDirs{
+func MakeIncludeDirs() *IncludeDirs {
+	return &IncludeDirs{
 		dirsI:       make([]string, 0, 2),
 		dirsIquote:  make([]string, 0, 2),
 		dirsIsystem: make([]string, 0, 2),
@@ -29,15 +29,30 @@ func MakeIncludeDirs() IncludeDirs {
 // GetDefaultIncludeDirsOnLocal retrieves default include dirs on a local machine.
 // This is done by -Wp,-v option for a no input file.
 // This result is cached once nocc-daemon is started.
-func (defIncludeDirs IncludeDirs) GetDefaultIncludeDirsOnLocal(compileName string, lang string) error {
-	compilerWpCommand := exec.Command(compileName, "-Wp,-v", "-x", lang, "/dev/null", "-fsyntax-only")
-	var compilerWpStderr bytes.Buffer
-	compilerWpCommand.Stderr = &compilerWpStderr
-	if err := compilerWpCommand.Run(); err != nil {
-		return err
+func (defIncludeDirs IncludeDirs) GetDefaultIncludeDirsOnLocal(invocation *Invocation) error {
+	lang := "c"
+	re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
+	if re.MatchString(invocation.compilerName) {
+		lang = "c++"
 	}
 
-	defIncludeDirs.parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr.String())
+	compilerCmdLine := []string{"-Wp,-v", "-x", lang, "/dev/null", "-fsyntax-only"}
+
+	localLaunch := LocalCompilerLaunch{
+		cwd:      invocation.cwd,
+		compiler: invocation.compilerName,
+		cmdLine:  compilerCmdLine,
+		uid:      invocation.uid,
+		gid:      invocation.gid,
+	}
+
+	exitcode, _, compilerStderr := localLaunch.RunCompilerLocally()
+
+	if exitcode != 0 {
+		return fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, exitcode, string(compilerStderr))
+	}
+
+	defIncludeDirs.parseCompilerDefaultIncludeDirsFromWpStderr(string(compilerStderr))
 
 	return nil
 }

@@ -22,7 +22,7 @@ type LocalCompilerLaunch struct {
 	gid      int
 }
 
-func (localcompiler *LocalCompilerLaunch) RuncompilerLocally() (exitCode int, stdout []byte, stderr []byte) {
+func (localcompiler *LocalCompilerLaunch) RunCompilerLocally() (exitCode int, stdout []byte, stderr []byte) {
 	logClient.Info(0, "compile locally", localcompiler.cmdLine)
 
 	var compilerStdout, compilerStderr bytes.Buffer

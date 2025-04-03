@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -56,21 +55,24 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 		}
 	}
 
-	var compilerMStdout, compilerMStderr bytes.Buffer
-	compilerMCommand := exec.Command(invocation.compilerName, compilerCmdLine...)
-	compilerMCommand.Dir = invocation.cwd
-	compilerMCommand.Stdout = &compilerMStdout
-	compilerMCommand.Stderr = &compilerMStderr
-	if err = compilerMCommand.Run(); err != nil {
-		if err.(*exec.ExitError) != nil {
-			err = fmt.Errorf("%s exited with code %d: %s", invocation.compilerName, compilerMCommand.ProcessState.ExitCode(), compilerMStderr.String())
-		}
+	localLaunch := LocalCompilerLaunch{
+		cwd:      invocation.cwd,
+		compiler: invocation.compilerName,
+		cmdLine:  compilerCmdLine,
+		uid:      invocation.uid,
+		gid:      invocation.gid,
+	}
+
+	exitcode, compilerStdout, compilerStderr := localLaunch.RunCompilerLocally()
+
+	if exitcode != 0 {
+		err = fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, exitcode, string(compilerStderr))
 		return
 	}
 
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
 	// We also need size and sha256 for every dependency: we'll use them to check whether they were already uploaded.
-	hFilesNames := extractIncludesFromCompilerMStdout(compilerMStdout.Bytes(), cppInFileAbs)
+	hFilesNames := extractIncludesFromCompilerMStdout(compilerStdout, cppInFileAbs)
 	hFiles = make([]*IncludedFile, 0, len(hFilesNames))
 	preallocatedBuf := make([]byte, 32*1024)
 

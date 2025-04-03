@@ -36,11 +36,12 @@ type Invocation struct {
 	cwd string // working directory, where nocc was launched
 
 	// cmdLine is parsed to the following fields:
-	cppInFile     string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
-	objOutFile    string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
-	compilerName  string      // g++ / clang / etc.
-	compilerArgs  []string    // args like -Wall, -fpch-preprocess and many more, except:
-	compilerIDirs IncludeDirs // -I / -iquote / -isystem go here
+	cppInFile     string       // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
+	objOutFile    string       // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
+	compilerName  string       // g++ / clang / etc.
+	compilerArgs  []string     // args like -Wall, -fpch-preprocess and many more, except:
+	compilerIDirs *IncludeDirs // -I / -iquote / -isystem go here
+	includeDirs   *IncludeDirs
 	depsFlags     DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
@@ -55,8 +56,7 @@ type Invocation struct {
 	compilerStderr   []byte
 	compilerDuration int32
 
-	summary     *InvocationSummary
-	includeDirs *IncludeDirs
+	summary *InvocationSummary
 }
 
 func isSourceFileName(fileName string) bool {
@@ -251,8 +251,9 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		compilerArgs:  make([]string, 0, len(req.CmdLine)),
 		compilerIDirs: MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
-		includeDirs:   daemon.GetOrCreateIncludeDirs(req.Compiler),
 	}
+
+	daemon.SetOrCreateIncludeDirs(invocation)
 
 	return invocation
 }
@@ -303,7 +304,7 @@ func (invocation *Invocation) OpenTempFile(fullPath string) (f *os.File, err err
 func (invocation *Invocation) WriteFile(name string, data []byte) error {
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	_ = f.Chown(invocation.uid, invocation.gid)
-	
+
 	if err != nil {
 		return err
 	}
