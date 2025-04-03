@@ -113,10 +113,12 @@ func (dirs *IncludeDirs) Count() int {
 func (dirs *IncludeDirs) AddIncArgs(filename string) []string {
 	iArgs := make([]string, 0, 1)
 
-	if !dirs.stdincxx || !dirs.stdinc {
-		if isCsourceFileName(filename) || isObjCSourceFileName(filename) {
-			iArgs = append(iArgs, "-nostdinc")
-		} else {
+	if !dirs.stdinc {
+		iArgs = append(iArgs, "-nostdinc")
+	}
+
+	if !dirs.stdincxx {
+		if !isCsourceFileName(filename) && !isObjCSourceFileName(filename) {
 			iArgs = append(iArgs, "-nostdinc++")
 		}
 	}

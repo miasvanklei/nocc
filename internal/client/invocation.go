@@ -168,7 +168,9 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				xArg := cmdLine[i+1]
 				if xArg == "c-header" || xArg == "c++-header" || xArg == "objective-c-header" || xArg == "objective-c++-header" {
 					invocation.depsFlags.SetCmdFlagEmitPCH()
+					invocation.compilerArgs = append(invocation.compilerArgs, arg, xArg)
 					i++
+					continue
 				}
 			} else if arg == "-nostdinc" {
 				invocation.includeDirs.stdinc = true
@@ -205,7 +207,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" {
 					continue // like "-Xclang" doesn't exist
 				}
-				invocation.compilerArgs = append(invocation.compilerArgs, "-Xclang", xArg)
+				invocation.compilerArgs = append(invocation.compilerArgs, arg, xArg)
 				i++
 				continue
 			} else if arg == "-march=native" {
