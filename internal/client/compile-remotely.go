@@ -43,6 +43,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	var requiredPchFile *pb.FileMetadata
 	if pchFile != nil {
 		requiredPchFile = pchFile.ToPbFileMetadata()
+		requiredFiles = append(requiredFiles, requiredPchFile)
 	}
 
 	// 2. Send sha256 of the .cpp and all dependencies to the remote.
