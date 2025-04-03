@@ -19,6 +19,7 @@ const (
 	fsFileStateUploaded
 	fsFileStatePchCompiling
 	fsFileStatePchCompiled
+	fsFileStatePchCompileError
 )
 
 // fileInClientDir describes a file on a server file system inside a client working dir.

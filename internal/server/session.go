@@ -93,35 +93,33 @@ func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLaun
 	}
 
 	if session.pchFile != nil {
-		if !session.StartCompilingPchIfPossible(client, compilerLauncher, objFileCache) {
-			return
-		}
-	}
-
-	if session.compilationStarted.Swap(1) == 0 {
+		go session.StartCompilingPchIfPossible(client, compilerLauncher, objFileCache)
+	} else if session.compilationStarted.Swap(1) == 0 {
 		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
 	}
 }
 
-func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) bool {
+func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
 	if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
 		logServer.Info(1, "compiling pch file", session.pchFile)
 
 		err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
 		if err == nil {
 			session.pchFile.state.Store(fsFileStatePchCompiled)
-			return true
+		} else {
+			session.pchFile.state.Store(fsFileStatePchCompileError)
 		}
 
-		logServer.Error("can't compile own pch file", session.pchFile, err)
-		session.pchFile.state.Store(fsFileStateUploadError)
-		session.compilerStderr = fmt.Appendln(nil, err)
+		for _, session := range client.GetSessionsNotStartedCompilation() {
+			session.StartCompilingObjIfPossible(client, compilerLauncher, objFileCache)
+		}
+	} else if session.pchFile.state.Load() == fsFileStatePchCompiled {
+		logServer.Info(1, "pch file already compiled")
+		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
+	} else if session.pchFile.state.Load() == fsFileStatePchCompileError {
+		logServer.Error("pch file compilation failed, not continuing")
+		session.compilerStderr = fmt.Appendln(nil, fmt.Errorf("pch file compilation failed, not continuing"))
 		session.compilerExitCode = -1
 		client.PushToClientReadyChannel(session)
-	} else if session.pchFile.state.Load() == fsFileStatePchCompiled {
-		logServer.Info(1, "pch file already compiled", session.pchFile)
-		return true
 	}
-
-	return false
 }
