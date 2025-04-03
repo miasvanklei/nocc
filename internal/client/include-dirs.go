@@ -13,6 +13,7 @@ type IncludeDirs struct {
 	dirsIquote  []string // -iquote dir
 	dirsIsystem []string // -isystem dir
 	filesI      []string // -include file
+	includePch  string   // -include-pch file
 	stdinc      bool     // -nostdinc
 	stdincxx    bool     // -nostdinc++
 }
@@ -135,6 +136,10 @@ func (dirs *IncludeDirs) AsCompilerArgs() []string {
 
 	for _, dir := range dirs.dirsIquote {
 		iArgs = append(iArgs, "-iquote", dir)
+	}
+
+	if dirs.includePch != "" {
+		iArgs = append(iArgs, "-include-pch", dirs.includePch)
 	}
 
 	if !dirs.stdinc && !dirs.stdincxx {

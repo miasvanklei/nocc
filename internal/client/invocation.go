@@ -161,6 +161,9 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
 				invocation.compilerIDirs.dirsIsystem = append(invocation.compilerIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
 				continue
+			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
+				invocation.compilerIDirs.includePch = pathAbs(invocation.cwd, iFile)
+				continue
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
 				invocation.compilerIDirs.filesI = append(invocation.compilerIDirs.filesI, pathAbs(invocation.cwd, iFile))
 				continue
@@ -204,7 +207,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				return
 			} else if arg == "-Xclang" && i < len(cmdLine)-1 { // "-Xclang {xArg}" — leave as is, unless we need to parse arg
 				xArg := cmdLine[i+1]
-				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" {
+				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" || xArg == "-include-pch" {
 					continue // like "-Xclang" doesn't exist
 				}
 				invocation.compilerArgs = append(invocation.compilerArgs, arg, xArg)
