@@ -110,10 +110,10 @@ func (dirs *IncludeDirs) Count() int {
 	return len(dirs.dirsI) + len(dirs.dirsIquote) + len(dirs.dirsIsystem) + len(dirs.filesI)
 }
 
-func (dirs *IncludeDirs) AsIncArgs(filename string) []string {
-	iArgs := make([]string, 0, 2)
+func (dirs *IncludeDirs) AddIncArgs(filename string) []string {
+	iArgs := make([]string, 0, 1)
 
-	if !dirs.stdincxx {
+	if !dirs.stdincxx || !dirs.stdinc {
 		if isCsourceFileName(filename) || isObjCSourceFileName(filename) {
 			iArgs = append(iArgs, "-nostdinc")
 		} else {

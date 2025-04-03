@@ -213,7 +213,7 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 		Compiler:   req.Compiler,
 		InputFile:  invocation.cppInFile,
 		OutputFile: invocation.objOutFile,
-		Args:       append(invocation.compilerArgs, invocation.includeDirs.AsIncArgs(invocation.compilerName)...),
+		Args:       append(invocation.includeDirs.AddIncArgs(invocation.cppInFile), invocation.compilerArgs...),
 		IDirs:      append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includeDirs.AsCompilerArgs()...),
 	}
 
