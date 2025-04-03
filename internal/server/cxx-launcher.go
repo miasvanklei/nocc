@@ -64,8 +64,6 @@ func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile s
 }
 
 func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) error {
-	compilerLauncher.serverCompilerThrottle <- struct{}{}
-
 	pchInvocation, err := ParsePchFile(session.pchFile)
 	if err != nil {
 		return err
@@ -81,6 +79,7 @@ func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, 
 
 	cxxCwd := client.MapClientFileNameToServerAbs(pchInvocation.Cwd)
 	args := PrepareServerCompilerCmdLine(client, pchInvocation.InputFile, objOutputFile, pchInvocation.Args, pchInvocation.IDirs)
+	compilerLauncher.serverCompilerThrottle <- struct{}{}
 	err = launchServerCompilerForPch(cxxCwd, pchInvocation.Compiler, args)
 	<-compilerLauncher.serverCompilerThrottle
 
@@ -101,13 +100,13 @@ func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, 
 // Currently, amount of max parallel C++ processes is an option provided at start up
 // (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
 func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) {
-	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
 
 	session.OutputFile = objFileCache.GenerateObjOutFileName(client, session)
 	compilerCmdLine := PrepareServerCompilerCmdLine(client, session.InputFile, session.OutputFile, session.compilerArgs, session.compilerIDirs)
 	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, compilerCmdLine)
-	session.LaunchServerCompilerForCpp(client, compilerCmdLine, objFileCache) // blocking until compiler ends
 
+	compilerLauncher.serverCompilerThrottle <- struct{}{} // blocking
+	session.LaunchServerCompilerForCpp(client, compilerCmdLine, objFileCache) // blocking until compiler ends
 	<-compilerLauncher.serverCompilerThrottle
 
 	// save to obj cache (to be safe, only if compiler output is empty)
