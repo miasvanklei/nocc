@@ -29,7 +29,7 @@ func MakeIncludeDirs() *IncludeDirs {
 // GetDefaultIncludeDirsOnLocal retrieves default include dirs on a local machine.
 // This is done by -Wp,-v option for a no input file.
 // This result is cached once nocc-daemon is started.
-func (defIncludeDirs IncludeDirs) GetDefaultIncludeDirsOnLocal(invocation *Invocation) error {
+func (defIncludeDirs *IncludeDirs) GetDefaultIncludeDirsOnLocal(invocation *Invocation) error {
 	lang := "c"
 	re := regexp.MustCompile(`\+\+(?:-\d+)?$`)
 	if re.MatchString(invocation.compilerName) {
@@ -58,7 +58,7 @@ func (defIncludeDirs IncludeDirs) GetDefaultIncludeDirsOnLocal(invocation *Invoc
 }
 
 // parseCompilerDefaultIncludeDirsFromWpStderr parses output of a C++ compiler with -Wp,-v option.
-func (defIncludeDirs IncludeDirs) parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr string) {
+func (defIncludeDirs *IncludeDirs) parseCompilerDefaultIncludeDirsFromWpStderr(compilerWpStderr string) {
 	const (
 		dirsIStart      = "#include <...>"
 		dirsIquoteStart = "#include \"...\""
