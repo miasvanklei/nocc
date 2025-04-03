@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"sync/atomic"
 
 	"nocc/internal/common"
@@ -92,16 +93,7 @@ func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLaun
 	}
 
 	if session.pchFile != nil {
-		if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
-			err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
-			if err != nil {
-				session.pchFile.state.Store(fsFileStateUploadError)
-				logServer.Error("can't compile own pch file", session.pchFile, err)
-				return
-			}
-
-			session.pchFile.state.Store(fsFileStatePchCompiled)
-		} else if session.pchFile.state.Load() != fsFileStatePchCompiled {
+		if !session.StartCompilingPchIfPossible(client, compilerLauncher, objFileCache) {
 			return
 		}
 	}
@@ -109,4 +101,27 @@ func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLaun
 	if session.compilationStarted.Swap(1) == 0 {
 		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
 	}
+}
+
+func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) bool {
+	if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
+		logServer.Info(1, "compiling pch file", session.pchFile)
+
+		err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
+		if err == nil {
+			session.pchFile.state.Store(fsFileStatePchCompiled)
+			return true
+		}
+
+		logServer.Error("can't compile own pch file", session.pchFile, err)
+		session.pchFile.state.Store(fsFileStateUploadError)
+		session.compilerStderr = fmt.Appendln(nil, err)
+		session.compilerExitCode = -1
+		client.PushToClientReadyChannel(session)
+	} else if session.pchFile.state.Load() == fsFileStatePchCompiled {
+		logServer.Info(1, "pch file already compiled", session.pchFile)
+		return true
+	}
+
+	return false
 }
