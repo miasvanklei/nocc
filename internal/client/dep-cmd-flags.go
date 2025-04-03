@@ -98,7 +98,7 @@ func (deps *DepCmdFlags) GenerateAndSaveDepFile(invocation *Invocation, hFiles [
 		DTargets: depTargets,
 	}
 
-	return depFileName, common.WriteFile(depFileName, depFile.WriteToBytes(), invocation.uid, invocation.gid)
+	return depFileName, invocation.WriteFile(depFileName, depFile.WriteToBytes())
 }
 
 // calcDefaultTargetName returns targetName if no -MT and similar options passed

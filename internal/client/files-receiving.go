@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"nocc/internal/common"
 	"nocc/pb"
 
 	"google.golang.org/grpc/codes"
@@ -104,12 +103,6 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		invocation := fr.daemon.FindInvocationBySessionID(firstChunk.SessionID)
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
-			if firstChunk.CompilerExitCode == 0 {
-				if err, _ = receiveObjFileByChunks(stream, firstChunk, os.Getuid(), os.Getgid(), "/tmp/nocc-dev-null"); err != nil {
-					fr.RecreateReceiveStreamOrQuit(cancelFunc, err)
-					return
-				}
-			}
 			continue
 		}
 
@@ -125,7 +118,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			continue
 		}
 
-		err, needRecreateStream := receiveObjFileByChunks(stream, firstChunk, invocation.uid, invocation.gid, invocation.objOutFile)
+		err, needRecreateStream := receiveObjFileByChunks(stream, firstChunk, invocation)
 		invocation.DoneRecvObj(err)
 
 		// recreate a stream if it's corrupted, like chunks mismatch
@@ -141,7 +134,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 
 // receiveObjFileByChunks is an actual implementation of saving a server stream to a local client .o file.
 // See server.sendObjFileByChunks.
-func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, firstChunk *pb.RecvCompiledObjChunkReply, uid int, gid int, objOutFile string) (error, bool) {
+func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, firstChunk *pb.RecvCompiledObjChunkReply, invocation *Invocation) (error, bool) {
 	receivedBytes := len(firstChunk.ChunkBody)
 	expectedBytes := int(firstChunk.FileSize)
 
@@ -150,11 +143,11 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 
 	if receivedBytes >= expectedBytes {
 		// if a dir for objOutFile doesn't exist, it will fail; g++/clang act the same
-		errWrite = os.WriteFile(objOutFile, firstChunk.ChunkBody, os.ModePerm)
+		errWrite = os.WriteFile(invocation.objOutFile, firstChunk.ChunkBody, os.ModePerm)
 		return errWrite, false
 	}
 
-	fileTmp, errWrite := common.OpenTempFile(objOutFile, uid, gid)
+	fileTmp, errWrite := invocation.OpenTempFile(invocation.objOutFile)
 
 	if errWrite == nil {
 		_, errWrite = fileTmp.Write(firstChunk.ChunkBody)
@@ -179,7 +172,7 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 	if fileTmp != nil {
 		_ = fileTmp.Close()
 		if errWrite == nil {
-			errWrite = os.Rename(fileTmp.Name(), objOutFile)
+			errWrite = os.Rename(fileTmp.Name(),invocation.objOutFile)
 		}
 		_ = os.Remove(fileTmp.Name())
 	}

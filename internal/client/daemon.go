@@ -219,7 +219,7 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 	}
 
 	bytes, _ := json.Marshal(&pchinvocation)
-	common.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes, invocation.uid, invocation.gid)
+	invocation.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes)
 
 	return response
 }

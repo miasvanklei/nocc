@@ -2,8 +2,11 @@ package client
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -288,4 +291,27 @@ func (invocation *Invocation) ForceInterrupt(err error) {
 	}
 	// release invocation.wgDone
 	invocation.DoneRecvObj(err)
+}
+
+func (invocation *Invocation) OpenTempFile(fullPath string) (f *os.File, err error) {
+	fileNameTmp := fullPath + "." + strconv.Itoa(rand.Int())
+	fileTmp, err := os.OpenFile(fileNameTmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, os.ModePerm)
+	_ = fileTmp.Chown(invocation.uid, invocation.gid)
+	return fileTmp, err
+}
+
+func (invocation *Invocation) WriteFile(name string, data []byte) error {
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	_ = f.Chown(invocation.uid, invocation.gid)
+	
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(data)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+
+	return err
 }
