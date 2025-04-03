@@ -32,7 +32,6 @@ type NoccServer struct {
 	ActiveClients    *ClientsStorage
 	CompilerLauncher *CompilerLauncher
 
-	SystemHeaders *SystemHeadersCache
 	SrcFileCache  *SrcFileCache
 	ObjFileCache  *ObjFileCache
 }
@@ -134,16 +133,6 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	for index, file := range session.files {
 		if file.state.CompareAndSwap(fsFileStateJustCreated, fsFileStateUploading) {
 			file.uploadStartTime = time.Now()
-
-			isSystemFile := IsSystemHeaderPath(file.serverFileName) // inside /usr/local/include
-			if isSystemFile && !s.SystemHeaders.IsSystemHeader(file.serverFileName, file.fileSize, file.fileSHA256) {
-				return nil, fmt.Errorf("system file %s differs between a client and a server", file.serverFileName)
-			}
-			if isSystemFile {
-				logServer.Info(2, "file", file.serverFileName, "is a system file, no need to upload")
-				file.state.Store(fsFileStateUploaded)
-				continue
-			}
 
 			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, client.MapServerAbsToClientFileName(file.serverFileName))
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))

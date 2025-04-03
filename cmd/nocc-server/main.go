@@ -93,11 +93,6 @@ func main() {
 		failedStart("Failed to init compiler launcher", err)
 	}
 
-	s.SystemHeaders, err = server.MakeSystemHeadersCache()
-	if err != nil {
-		failedStart("Failed to init system headers hashtable", err)
-	}
-
 	s.SrcFileCache, err = server.MakeSrcFileCache(prepareEmptyDir(cppStoreDir, "src-cache"), *srcCacheLimit)
 	if err != nil {
 		failedStart("Failed to init src file cache", err)

@@ -76,11 +76,6 @@ func (client *Client) makeNewFile(clientFileName string, fileSize int64, fileSHA
 // Note, that system files like /usr/local/include are required to be equal on both sides.
 // (if not, a server session will fail to start, and a client will fall back to local compilation)
 func (client *Client) MapClientFileNameToServerAbs(clientFileName string) string {
-	if clientFileName[0] == '/' {
-		if IsSystemHeaderPath(clientFileName) {
-			return clientFileName
-		}
-	}
 	return path.Join(client.workingDir, clientFileName)
 }
 
