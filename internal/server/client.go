@@ -211,9 +211,9 @@ func (client *Client) IsFileUploadHanged(fileWithStateUploading *fileInClientDir
 	passedSec := time.Since(fileWithStateUploading.uploadStartTime).Seconds()
 
 	if fileWithStateUploading.fileSize > 5*1024*1024 {
-		return passedSec > 60
+		return passedSec > 90
 	}
-	return passedSec > 15
+	return passedSec > 30
 }
 
 func (client *Client) RemoveWorkingDir() {
