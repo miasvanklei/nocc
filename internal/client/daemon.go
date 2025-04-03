@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	timeoutForceInterruptInvocation = 8 * time.Minute
+	timeoutForceInterruptInvocation = 12 * time.Minute
 )
 
 // Daemon is created once, in a separate process `nocc-daemon`, which is listening for connections via unix socket.
@@ -294,6 +294,7 @@ func (daemon *Daemon) SetOrCreateIncludeDirs(invocation *Invocation) {
 	}
 
 	daemon.includesDirs[invocation.compilerName] = includeDirs
+	invocation.includeDirs = includeDirs
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {
