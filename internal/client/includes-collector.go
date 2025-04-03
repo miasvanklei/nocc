@@ -97,7 +97,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 	addHFile := func(hFileName string, searchForPch bool) error {
 		if searchForPch {
 			if pchFile == nil {
-				pchFile, _ = fillSizeAndMTime(common.ReplaceFileExt(hFileName, ".nocc-pch"))
+				pchFile, _ = fillSizeAndMTime(hFileName + ".nocc-pch")
 			}
 		}
 		hFile, err := fillSizeAndMTime(hFileName)
