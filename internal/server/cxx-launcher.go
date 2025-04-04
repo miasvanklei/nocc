@@ -46,6 +46,8 @@ func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile s
 
 	compilerCmdLine := make([]string, 0, len(compilerIDirs)+len(compilerArgs)+3)
 
+	compilerCmdLine = append(compilerCmdLine, "--sysroot", client.workingDir)
+
 	// loop through -I {dir} / -include {file} / etc. (format is guaranteed), converting client {dir} to server path
 	for i := 0; i < len(compilerIDirs); i += 2 {
 		arg := compilerIDirs[i]
