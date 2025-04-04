@@ -143,7 +143,7 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 
 	if receivedBytes >= expectedBytes {
 		// if a dir for objOutFile doesn't exist, it will fail; g++/clang act the same
-		errWrite = os.WriteFile(invocation.objOutFile, firstChunk.ChunkBody, os.ModePerm)
+		errWrite = invocation.WriteFile(invocation.objOutFile, firstChunk.ChunkBody)
 		return errWrite, false
 	}
 
