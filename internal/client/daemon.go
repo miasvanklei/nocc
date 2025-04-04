@@ -54,8 +54,6 @@ type Daemon struct {
 	totalInvocations  atomic.Uint32
 	activeInvocations map[uint32]*Invocation
 
-	includesDirs map[string]*IncludeDirs
-
 	mu sync.RWMutex
 }
 
@@ -89,7 +87,6 @@ func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompile
 		localCompilerThrottle: make(chan struct{}, maxLocalcompilerProcesses),
 		disableLocalCompiler:  maxLocalcompilerProcesses == 0,
 		activeInvocations:     make(map[uint32]*Invocation, 300),
-		includesDirs:          make(map[string]*IncludeDirs, 2),
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -213,8 +210,8 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 		Compiler:   req.Compiler,
 		InputFile:  invocation.cppInFile,
 		OutputFile: invocation.objOutFile,
-		Args:       append(invocation.includeDirs.AddIncArgs(invocation.cppInFile), invocation.compilerArgs...),
-		IDirs:      append(invocation.compilerIDirs.AsCompilerArgs(), invocation.includeDirs.AsCompilerArgs()...),
+		Args:       invocation.compilerArgs,
+		IDirs:      invocation.compilerIDirs.AsCompilerArgs(),
 	}
 
 	bytes, _ := json.Marshal(&pchinvocation)
@@ -275,26 +272,6 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 	<-daemon.localCompilerThrottle
 
 	return reply
-}
-
-func (daemon *Daemon) SetOrCreateIncludeDirs(invocation *Invocation) {
-	daemon.mu.Lock()
-	defer daemon.mu.Unlock()
-	includeDirs := daemon.includesDirs[invocation.compilerName]
-	if includeDirs != nil {
-		invocation.includeDirs = includeDirs
-		return
-	}
-
-	includeDirs = MakeIncludeDirs()
-	err := includeDirs.GetDefaultIncludeDirsOnLocal(invocation)
-
-	if err != nil {
-		logClient.Error("failed to calc default include dirs for", invocation.compilerName, err)
-	}
-
-	daemon.includesDirs[invocation.compilerName] = includeDirs
-	invocation.includeDirs = includeDirs
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {

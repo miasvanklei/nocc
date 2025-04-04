@@ -70,7 +70,7 @@ func (deps *DepCmdFlags) ShouldGenerateDepFile() bool {
 }
 
 // GenerateAndSaveDepFile is called if a .o.d file generation is needed.
-// Prior to this, all dependencies (hFiles) are already known (via own includes or compiler -M).
+// Prior to this, all dependencies (hFiles) are already known (via compiler -M).
 // So, here we need only to satisfy depfile format rules.
 func (deps *DepCmdFlags) GenerateAndSaveDepFile(invocation *Invocation, hFiles []*IncludedFile) (string, error) {
 	targetName := deps.flagMT
@@ -127,10 +127,6 @@ func (deps *DepCmdFlags) calcOutputDepFileName(invocation *Invocation) string {
 
 // calcDepListFromHFiles fills DepFileTarget.TargetDepList
 func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []*IncludedFile) []string {
-	if deps.flagMMD {
-		hFiles = deps.filterOutSystemHFiles(invocation.includeDirs, hFiles)
-	}
-
 	processPwd, _ := os.Getwd()
 	if !strings.HasSuffix(processPwd, "/") {
 		processPwd += "/"
@@ -148,26 +144,9 @@ func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []
 	return depList
 }
 
-func (deps *DepCmdFlags) filterOutSystemHFiles(compilerDefIDirs *IncludeDirs, hFiles []*IncludedFile) []*IncludedFile {
-	userHFiles := make([]*IncludedFile, 0)
-
-	for _, hFile := range hFiles {
-		isSystem := false
-		for _, sysDir := range compilerDefIDirs.dirsIsystem {
-			if strings.HasPrefix(hFile.fileName, sysDir) {
-				isSystem = true
-			}
-		}
-		if !isSystem {
-			userHFiles = append(userHFiles, hFile)
-		}
-	}
-	return userHFiles
-}
-
 // quoteMakefileTarget escapes any characters which are special to Make
 func quoteMakefileTarget(targetName string) (escaped string) {
-	for i := 0; i < len(targetName); i++ {
+	for i := range len(targetName) {
 		switch targetName[i] {
 		case ' ':
 		case '\t':

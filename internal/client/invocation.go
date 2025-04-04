@@ -175,10 +175,6 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 					i++
 					continue
 				}
-			} else if arg == "-nostdinc" {
-				invocation.includeDirs.stdinc = true
-			} else if arg == "-nostdinc++" {
-				invocation.includeDirs.stdincxx = true
 			} else if arg == "-I-" || arg == "-E" ||
 				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
@@ -201,7 +197,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			} else if arg == "-MP" {
 				invocation.depsFlags.SetCmdFlagMP()
 				continue
-			} else if arg == "-M" || arg == "-MM" || arg == "-MG" {
+			} else if arg == "-M" || arg == "-MM" || arg == "-MG" || arg == "-MMD" {
 				// these dep flags are unsupported yet, cmake doesn't use them
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
@@ -257,8 +253,6 @@ func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
 		compilerIDirs: MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
 	}
-
-	daemon.SetOrCreateIncludeDirs(invocation)
 
 	return invocation
 }
