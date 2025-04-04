@@ -87,35 +87,37 @@ func startUsingFileInSession(client *Client, meta *pb.FileMetadata) (*fileInClie
 // Note, that it's called for sessions that don't exist in obj cache.
 func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
 	for _, file := range session.files {
-		if file.state.Load() != fsFileStateUploaded {
+		if file.state.Load() == fsFileStateUploading {
 			return
 		}
 	}
 
 	if session.pchFile != nil {
 		go session.StartCompilingPchIfPossible(client, compilerLauncher, objFileCache)
-	} else if session.compilationStarted.Swap(1) == 0 {
+	} else {
 		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
 	}
 }
 
 func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
-	if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
-		logServer.Info(1, "compiling pch file", session.pchFile)
+	if session.pchFile.state.Load() == fsFileStatePchCompiled {
+		logServer.Info(1, "pch file already compiled", session.sessionID)
+		compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
+	} else if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
+		logServer.Info(1, "compiling pch file", session.pchFile.serverFileName)
 
 		err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
 		if err == nil {
 			session.pchFile.state.Store(fsFileStatePchCompiled)
+			logServer.Error("pch file compiled", session.pchFile.serverFileName)
 		} else {
+			logServer.Error("failed to compile pch file")
 			session.pchFile.state.Store(fsFileStatePchCompileError)
 		}
 
 		for _, session := range client.GetSessionsNotStartedCompilation() {
 			session.StartCompilingObjIfPossible(client, compilerLauncher, objFileCache)
 		}
-	} else if session.pchFile.state.Load() == fsFileStatePchCompiled {
-		logServer.Info(1, "pch file already compiled")
-		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
 	} else if session.pchFile.state.Load() == fsFileStatePchCompileError {
 		logServer.Error("pch file compilation failed, not continuing")
 		session.compilerStderr = fmt.Appendln(nil, fmt.Errorf("pch file compilation failed, not continuing"))
