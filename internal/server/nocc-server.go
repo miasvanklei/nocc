@@ -134,6 +134,13 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 		if file.state.CompareAndSwap(fsFileStateJustCreated, fsFileStateUploading) {
 			file.uploadStartTime = time.Now()
 
+			if s.SrcFileCache.CreateHardLinkFromCache(file.serverFileName, file.fileSHA256) {
+				logServer.Info(2, "file", file.serverFileName, "is in src-cache, no need to upload")
+				file.state.Store(fsFileStateUploaded)
+
+				continue
+			}
+
 			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, client.MapServerAbsToClientFileName(file.serverFileName))
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
 		} else if file.state.CompareAndSwap(fsFileStateUploading, fsFileStateUploading) {
