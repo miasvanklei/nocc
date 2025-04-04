@@ -54,7 +54,7 @@ func (logger *LoggerWrapper) Error(v ...any) {
 		_ = logger.impl.Output(0, formatStr("<3>", v...))
 	}
 	if logger.duplicateToStderr {
-		_, _ = fmt.Fprint(os.Stderr, formatStr("[nocc]", v...))
+		_, _ = fmt.Fprint(os.Stderr, formatStr("", v...))
 	}
 }
 
