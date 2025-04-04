@@ -1,9 +1,7 @@
 package client
 
 import (
-	"os"
 	"path"
-	"strings"
 
 	"nocc/internal/common"
 )
@@ -127,18 +125,10 @@ func (deps *DepCmdFlags) calcOutputDepFileName(invocation *Invocation) string {
 
 // calcDepListFromHFiles fills DepFileTarget.TargetDepList
 func (deps *DepCmdFlags) calcDepListFromHFiles(invocation *Invocation, hFiles []*IncludedFile) []string {
-	processPwd, _ := os.Getwd()
-	if !strings.HasSuffix(processPwd, "/") {
-		processPwd += "/"
-	}
-	relFileName := func(fileName string) string {
-		return quoteMakefileTarget(strings.TrimPrefix(fileName, processPwd))
-	}
-
 	depList := make([]string, 0, 1+len(hFiles))
 	depList = append(depList, quoteMakefileTarget(invocation.cppInFile))
 	for _, hFile := range hFiles {
-		depList = append(depList, relFileName(hFile.fileName))
+		depList = append(depList, quoteMakefileTarget(hFile.fileName))
 	}
 
 	return depList
