@@ -189,10 +189,10 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 		return daemon.invokePCHCompilation(req, invocation)
 
 	case invokedForCompilingCpp:
-		logClient.Info(1, "compiling cpp remotely", invocation.cppInFile)
+		logClient.Info(1, "compiling remotely", invocation.cppInFile)
 		result, err := daemon.invokeForRemoteCompiling(invocation)
 
-		if err != nil {
+		if err != nil || result.ExitCode != 0 {
 			return daemon.InvokeLocalCompilation(req, err)
 		}
 
