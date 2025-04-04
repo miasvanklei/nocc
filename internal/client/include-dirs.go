@@ -43,6 +43,10 @@ func (dirs *IncludeDirs) AsCompilerArgs() []string {
 		iArgs = append(iArgs, "-include-pch", dirs.includePch)
 	}
 
+	for _, dir := range dirs.dirsIsystem {
+		iArgs = append(iArgs, "-isystem", dir)
+	}
+
 	for _, file := range dirs.filesI {
 		iArgs = append(iArgs, "-include", file)
 	}
