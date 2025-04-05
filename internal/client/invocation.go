@@ -189,8 +189,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 					i++
 					continue
 				}
-			} else if arg == "-I-" || arg == "-E" ||
-				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
+			} else if arg == "-I-" || arg == "-E" || strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
 			} else if mfFile := parseArgStr(cmdLine, "-MF", &i); mfFile != "" {
@@ -251,7 +250,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		return
 	}
 
-	if strings.Contains(invocation.objOutFile, "/dev/null") {
+	// conftest.* built by autoconf is always done locally
+	if strings.Contains(invocation.objOutFile, "/dev/null") || strings.HasPrefix(invocation.cppInFile, "conftest.") || strings.HasPrefix(invocation.cppInFile, "tmp.conftest.") {
 		invocation.invokeType = invokedForLocalCompiling
 	} else if invocation.depsFlags.flagEmitPCH {
 		invocation.invokeType = invokedForCompilingPch
