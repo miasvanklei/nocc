@@ -21,20 +21,6 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	invocation.summary.nIncludes = len(hFiles)
 	invocation.summary.AddTiming("collected_includes")
 
-	// if compiler is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
-	// we do it on a client side (moreover, they are stripped off compilerArgs and not sent to the remote)
-	// note, that .o.d file is generated ALONG WITH .o (like "a side effect of compilation")
-	if invocation.depsFlags.ShouldGenerateDepFile() {
-		go func() {
-			depFileName, err := invocation.depsFlags.GenerateAndSaveDepFile(invocation, hFiles)
-			if err == nil {
-				logClient.Info(2, "saved depfile to", depFileName)
-			} else {
-				logClient.Error("error generating depfile:", err)
-			}
-		}()
-	}
-
 	requiredFiles := make([]*pb.FileMetadata, 0, len(hFiles)+1)
 	for _, hFile := range hFiles {
 		requiredFiles = append(requiredFiles, hFile.ToPbFileMetadata())
@@ -81,5 +67,18 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	} else {
 		logClient.Info(2, "saved obj file to", invocation.objOutFile)
 	}
+
+    // if compiler is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
+	// we do it on a client side (moreover, they are stripped off compilerArgs and not sent to the remote)
+	// note, that .o.d file is generated ALONG WITH .o (like "a side effect of compilation")
+	if invocation.depsFlags.ShouldGenerateDepFile() {
+		depFileName, err := invocation.depsFlags.GenerateAndSaveDepFile(invocation, hFiles)
+		if err == nil {
+			logClient.Info(2, "saved depfile to", depFileName)
+		} else {
+			logClient.Error("error generating depfile:", err)
+		}
+	}
+
 	return
 }
