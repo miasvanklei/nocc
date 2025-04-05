@@ -23,6 +23,7 @@ type DaemonUnixSockListener struct {
 }
 
 type DaemonSockRequest struct {
+	SessionId uint32
 	Uid      int
 	Gid      int
 	Cwd      string
@@ -108,6 +109,7 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 	}
 
 	request := DaemonSockRequest{
+		SessionId: daemon.totalInvocations.Add(1),
 		Uid:      uid,
 		Gid:      gid,
 		Cwd:      reqParts[0],

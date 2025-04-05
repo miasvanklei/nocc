@@ -111,7 +111,7 @@ func pathAbs(cwd string, relPath string) string {
 	return filepath.Join(cwd, relPath)
 }
 
-func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []string) {
+func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	parseArgFile := func(key string, arg string, argIndex *int) (string, bool) {
 		if arg == key { // -I /path
 			if *argIndex+1 < len(cmdLine) {
@@ -264,12 +264,12 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 	}
 }
 
-func CreateInvocation(daemon *Daemon, req DaemonSockRequest) *Invocation {
+func CreateInvocation(req DaemonSockRequest) *Invocation {
 	invocation := &Invocation{
 		uid:           req.Uid,
 		gid:           req.Gid,
 		createTime:    time.Now(),
-		sessionID:     daemon.totalInvocations.Add(1),
+		sessionID:     req.SessionId,
 		cwd:           req.Cwd,
 		compilerName:  req.Compiler,
 		compilerArgs:  make([]string, 0, len(req.CmdLine)),

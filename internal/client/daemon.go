@@ -163,8 +163,8 @@ func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason er
 }
 
 func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
-	invocation := CreateInvocation(daemon, req)
-	invocation.ParseCmdLineInvocation(daemon, req.CmdLine)
+	invocation := CreateInvocation(req)
+	invocation.ParseCmdLineInvocation(req.CmdLine)
 
 	switch invocation.invokeType {
 	default:
