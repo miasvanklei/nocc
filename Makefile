@@ -46,15 +46,15 @@ install: install.bin install.systemd
 
 .PHONY: install.systemd
 install.systemd:
-	install -D -m 644 data/nocc-daemon.service $(PREFIX)/lib/systemd/nocc-daemon.service
-	install -D -m 644 data/nocc-server.service $(PREFIX)/lib/systemd/nocc-server.service
-	install -D -m 644 data/nocc-daemon.socket $(PREFIX)/lib/systemd/nocc-daemon.socket
+	install -D -m 644 data/nocc-daemon.service $(PREFIX)/lib/systemd/system/nocc-daemon.service
+	install -D -m 644 data/nocc-server.service $(PREFIX)/lib/systemd/system/nocc-server.service
+	install -D -m 644 data/nocc-daemon.socket $(PREFIX)/lib/systemd/system/nocc-daemon.socket
 
 .PHONY: install.bin
 install.bin:
-	install -D -m 755 bin/nocc $(PREFIX)/usr/lib/nocc/bin
-	install -D -m 755 bin/nocc-daemon $(PREFIX)/usr/lib/nocc/bin
-	install -D -m 755 bin/nocc-server $(PREFIX)/usr/lib/nocc/bin
+	install -D -m 755 bin/nocc $(PREFIX)/lib/nocc/bin
+	install -D -m 755 bin/nocc-daemon $(PREFIX)/lib/nocc/bin
+	install -D -m 755 bin/nocc-server $(PREFIX)/lib/nocc/bin
 
 clean:
 	rm -f bin/nocc bin/nocc-daemon bin/nocc-server
