@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"slices"
 )
 
 func main() {
 	compiler, args := splitCompilerAndArgs(os.Args)
-	if isInputFromStdin() {
+	if shouldCompileLocally(args) {
+		os.Stderr.WriteString("[nocc] not a terminal compiling locally\n")
 		executeLocally(compiler, args, "")
 	}
 
@@ -31,21 +33,13 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func isInputFromStdin() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		exitOnError(err)
-	}
-	if (info.Mode()&os.ModeCharDevice) == 0 || info.Mode()&os.ModeNamedPipe != 0 {
-		return true
-	} else {
-		return false
-	}
+func shouldCompileLocally(args []string) bool {
+	return slices.Contains(args, "-")
 }
 
 func exitOnError(err error) {
 	if err != nil {
-		os.Stderr.WriteString(err.Error() + "\n")
+		os.Stderr.WriteString("[nocc]" + err.Error() + "\n")
 		os.Stderr.Close()
 		os.Exit(1)
 	}
@@ -93,7 +87,7 @@ func getPathCompiler(compiler string) (path_compiler string, err error) {
 
 func executeLocally(compiler string, arguments []string, error string) {
 	if error != "" {
-		os.Stderr.WriteString(error + "\n")
+		os.Stderr.WriteString("[nocc]" + error + "\n")
 	}
 
 	path_compiler, err := getPathCompiler(compiler)
