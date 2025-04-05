@@ -130,17 +130,31 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 		return "", false
 	}
 
-	parseArgStr := func(key string, arg string, argIndex *int) string {
-		if arg == key {
-			if *argIndex+1 < len(cmdLine) {
+	parseArgStr := func(args []string, key string, argIndex *int) string {
+		if args[*argIndex] == key {
+			if *argIndex+1 < len(args) {
 				*argIndex++
-				return cmdLine[*argIndex]
+				return args[*argIndex]
 			} else {
-				invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", arg)
+				invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", args[*argIndex])
 				return ""
 			}
 		}
 		return ""
+	}
+
+	parsePreprocessorArg := func (args []string, argIndex *int) bool {
+		if mfFile := parseArgStr(args, "-MD", argIndex); mfFile != "" {
+			invocation.depsFlags.SetCmdFlagMD()
+			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+			return true
+		} else if mfFile := parseArgStr(args, "-MMD", argIndex); mfFile != "" {
+			invocation.depsFlags.SetCmdFlagMMD()
+			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+			return true
+		}
+
+		return false
 	}
 
 	for i := 0; i < len(cmdLine); i++ {
@@ -179,13 +193,13 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 				strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if mfFile := parseArgStr("-MF", arg, &i); mfFile != "" {
+			} else if mfFile := parseArgStr(cmdLine, "-MF", &i); mfFile != "" {
 				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 				continue
-			} else if strArg := parseArgStr("-MT", arg, &i); strArg != "" {
+			} else if strArg := parseArgStr(cmdLine, "-MT", &i); strArg != "" {
 				invocation.depsFlags.SetCmdFlagMT(strArg)
 				continue
-			} else if strArg := parseArgStr("-MQ", arg, &i); strArg != "" {
+			} else if strArg := parseArgStr(cmdLine, "-MQ", &i); strArg != "" {
 				invocation.depsFlags.SetCmdFlagMQ(strArg)
 				continue
 			} else if arg == "-MD" {
@@ -212,6 +226,14 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			} else if arg == "-march=native" {
 				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
 				return
+			} else if strings.HasPrefix(arg, "-Wp") {
+				wArgs := strings.Split(arg, ",")
+				for j := 1; j < len(wArgs); j++ {
+					if !parsePreprocessorArg(wArgs, &j) {
+						cmdLine = append(cmdLine, wArgs[j])
+					}
+				}
+				continue
 			}
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
@@ -221,6 +243,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(daemon *Daemon, cmdLine []s
 			invocation.cppInFile = arg
 			continue
 		}
+
 		invocation.compilerArgs = append(invocation.compilerArgs, arg)
 	}
 
