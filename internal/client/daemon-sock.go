@@ -98,18 +98,21 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 		listener.respondErr(conn)
 		return
 	}
+
 	reqParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
+
 	if len(reqParts) < 3 {
 		logClient.Error("couldn't read from socket", reqParts)
 		listener.respondErr(conn)
 		return
 	}
+
 	request := DaemonSockRequest{
 		Uid:      uid,
 		Gid:      gid,
 		Cwd:      reqParts[0],
 		Compiler: reqParts[1],
-		CmdLine:  strings.Split(reqParts[2], " "),
+		CmdLine:  reqParts[2:],
 	}
 
 	listener.activeConnections.Add(1)

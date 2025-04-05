@@ -113,7 +113,7 @@ func executeLocally(compiler string, arguments []string, error string) {
 }
 
 func sendRequest(conn net.Conn, current_path string, compiler string, arguments []string) {
-	_, err := conn.Write(fmt.Appendf(nil, "%s\b%s\b%s\000", current_path, compiler, strings.Join(arguments, " ")))
+	_, err := conn.Write(fmt.Appendf(nil, "%s\b%s\b%s\000", current_path, compiler, strings.Join(arguments, "\b")))
 	if err != nil {
 		executeLocally(compiler, arguments, err.Error())
 	}
