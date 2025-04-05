@@ -33,8 +33,9 @@ func main() {
 	os.Exit(exitCode)
 }
 
+// We compile locally if we only need to preprocess or when input is from stdin.
 func shouldCompileLocally(args []string) bool {
-	return slices.Contains(args, "-")
+	return slices.Contains(args, "-") || slices.Contains(args, "-E")
 }
 
 func exitOnError(err error) {
