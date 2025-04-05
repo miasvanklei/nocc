@@ -51,6 +51,7 @@ func (listener *DaemonUnixSockListener) StartListeningUnixSocket() (err error) {
 }
 
 func (listener *DaemonUnixSockListener) StartAcceptingConnections(daemon *Daemon) {
+	_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyReady)
 	for {
 		conn, err := listener.netListener.Accept()
 		if err != nil {
@@ -61,7 +62,6 @@ func (listener *DaemonUnixSockListener) StartAcceptingConnections(daemon *Daemon
 				logClient.Error("daemon accept error:", err)
 			}
 		} else {
-			_, _ = sdaemon.SdNotify(false, sdaemon.SdNotifyReady)
 			listener.lastTimeAlive = time.Now()
 			go listener.onRequest(conn, daemon) // `nocc` invocation
 		}
