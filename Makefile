@@ -33,12 +33,12 @@ lint:
 	golangci-lint run
 
 .PHONY: client
-client:
+client: protogen
 	$(call build_daemon,bin)
 	$(call build_client,bin)
 
 .PHONY: server
-server:
+server: protogen
 	$(call build_server,bin)
 
 .PHONY: install
