@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -11,32 +12,41 @@ import (
 	"strings"
 )
 
-type DaemonSockResponse struct {
-	exitcode int
-	stdout   string
-	stderr   string
-}
-
 func main() {
+	compiler, args := splitCompilerAndArgs(os.Args)
+	if isInputFromStdin() {
+		executeLocally(compiler, args, "")
+	}
+
 	c, err := net.Dial("unix", "/run/nocc-daemon.sock")
 	exitOnError(err)
 	defer c.Close()
 
-	compiler, args := splitCompilerAndArgs(os.Args)
-
 	cwd := get_cwd()
 
 	sendRequest(c, cwd, compiler, args)
-	response := readResponse(c, compiler, args)
+	exitCode := readResponse(c, compiler, args)
 
-	os.Stdout.WriteString(response.stdout)
-	os.Stderr.WriteString(response.stderr)
-	os.Exit(response.exitcode)
+	os.Stderr.Close()
+	os.Exit(exitCode)
+}
+
+func isInputFromStdin() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		exitOnError(err)
+	}
+	if (info.Mode()&os.ModeCharDevice) == 0 || info.Mode()&os.ModeNamedPipe != 0 {
+		return true
+	} else {
+		return false
+	}
 }
 
 func exitOnError(err error) {
 	if err != nil {
 		os.Stderr.WriteString(err.Error() + "\n")
+		os.Stderr.Close()
 		os.Exit(1)
 	}
 }
@@ -82,16 +92,28 @@ func getPathCompiler(compiler string) (path_compiler string, err error) {
 }
 
 func executeLocally(compiler string, arguments []string, error string) {
-	os.Stderr.WriteString(error)
+	if error != "" {
+		os.Stderr.WriteString(error + "\n")
+	}
+
 	path_compiler, err := getPathCompiler(compiler)
+	if err != nil {
+		exitOnError(err)
+	}
 
-	exitOnError(err)
+	var compilerStdout, compilerStderr bytes.Buffer
+	cmd := exec.Command(path_compiler, arguments...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = &compilerStdout
+	cmd.Stderr = &compilerStderr
+	err = cmd.Run()
 
-	cmnd := exec.Command(path_compiler, arguments...)
+	os.Stdout.Write(compilerStdout.Bytes())
+	os.Stderr.Write(compilerStderr.Bytes())
 
-	err = cmnd.Run()
-
-	exitOnError(err)
+	if err != nil {
+		exitOnError(err)
+	}
 
 	os.Exit(0)
 }
@@ -103,11 +125,10 @@ func sendRequest(conn net.Conn, current_path string, compiler string, arguments 
 	}
 }
 
-func readResponse(conn net.Conn, compiler string, arguments []string) (daemonSockResponse DaemonSockResponse) {
+func readResponse(conn net.Conn, compiler string, arguments []string) int {
 	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
 		executeLocally(compiler, arguments, "Couldn't read from socket\n")
-		return
 	}
 
 	responseParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
@@ -121,11 +142,8 @@ func readResponse(conn net.Conn, compiler string, arguments []string) (daemonSoc
 		executeLocally(compiler, arguments, err.Error())
 	}
 
-	daemonSockResponse = DaemonSockResponse{
-		exitcode: exitcode,
-		stdout:   responseParts[1],
-		stderr:   responseParts[2],
-	}
+	os.Stdout.WriteString(responseParts[1])
+	os.Stderr.WriteString(responseParts[2])
 
-	return
+	return exitcode
 }
