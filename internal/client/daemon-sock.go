@@ -93,7 +93,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
 	uid, gid := getConnectedUser(conn)
 
-	slice, err := bufio.NewReaderSize(conn, 64*1024).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
 		logClient.Error("couldn't read from socket", err)
 		listener.respondErr(conn)
