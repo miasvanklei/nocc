@@ -239,7 +239,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
 				return
 			}
-			invocation.cppInFile = pathAbs(invocation.cwd, arg)
+			invocation.cppInFile = filepath.Clean(pathAbs(invocation.cwd, arg))
 			continue
 		}
 
