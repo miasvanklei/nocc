@@ -184,7 +184,7 @@ func (client *Client) MkdirAllForSession(session *Session) {
 		}
 	}
 	if exists := client.dirs[session.compilerCwd]; !exists {
-		dirsToCreate = append(dirsToCreate, session.compilerCwd)
+		dirsToCreate = append(dirsToCreate, client.MapClientFileNameToServerAbs(session.compilerCwd))
 	}
 	client.mu.RUnlock()
 

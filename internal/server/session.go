@@ -46,7 +46,7 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 		files:         make([]*fileInClientDir, len(in.RequiredFiles)),
 		compilerName:  in.Compiler,
 		InputFile:     in.InputFile,
-		compilerCwd:   client.MapClientFileNameToServerAbs(in.Cwd),
+		compilerCwd:   in.Cwd,
 		compilerArgs:  in.Args,
 		compilerIDirs: in.IDirs,
 	}

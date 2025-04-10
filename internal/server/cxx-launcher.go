@@ -14,6 +14,15 @@ import (
 	"time"
 )
 
+var defaultMappedFolders = []string{
+	"-b", "/lib",
+	"-b", "/usr/lib",
+	"-b", "/usr/bin",
+	"-b", "/bin",
+	"-b", "/etc",
+	"-b", "/tmp/nocc",
+}
+
 type CompilerLauncher struct {
 	serverCompilerThrottle chan struct{}
 }
@@ -29,40 +38,19 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 }
 
 // PrepareServercompilerCmdLine prepares a command line for compiler invocation.
-// Notably, options like -Wall and -fpch-preprocess are pushed as is,
-// but include dirs like /home/alice/headers need to be remapped to point to server dir.
 func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile string, compilerArgs []string, compilerIDirs []string) []string {
-	var cppInFile string
-	// cppInFile is as-is from a client cmd line:
-	// * "/abs/path" becomes "client.workingDir/abs/path"
-	//    (except for system files, /usr/include left unchanged)
-	// * "rel/path" (relative to clientCwd) is left as-is (becomes relative to session.compilerCwd)
-	//    (for correct __FILE__ expansion and other minor specifics)
-	if inputFile[0] == '/' {
-		cppInFile = client.MapClientFileNameToServerAbs(inputFile)
-	} else {
-		cppInFile = inputFile
-	}
-
 	compilerCmdLine := make([]string, 0, len(compilerIDirs)+len(compilerArgs)+3)
 
-	compilerCmdLine = append(compilerCmdLine, "--sysroot", client.workingDir)
-
-	// loop through -I {dir} / -include {file} / etc. (format is guaranteed), converting client {dir} to server path
 	for i := 0; i < len(compilerIDirs); i += 2 {
-		arg := compilerIDirs[i]
-		serverIdir := client.MapClientFileNameToServerAbs(compilerIDirs[i+1])
-		compilerCmdLine = append(compilerCmdLine, arg, serverIdir)
+		compilerCmdLine = append(compilerCmdLine, compilerIDirs[i], compilerIDirs[i+1])
 	}
 
-	for i := range compilerArgs {
-		compilerArg := FilePrefixMapOption(compilerArgs[i], client.workingDir)
-
+	for _, compilerArg := range compilerArgs {
 		compilerCmdLine = append(compilerCmdLine, compilerArg)
 	}
 
 	// build final string
-	return append(compilerCmdLine, "-o", outputFile, cppInFile)
+	return append(compilerCmdLine, "-o", outputFile, inputFile)
 }
 
 func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) error {
@@ -72,28 +60,27 @@ func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, 
 	}
 
 	var objCacheKey common.SHA256
-	objOutputFile := client.MapClientFileNameToServerAbs(pchInvocation.OutputFile)
+	clientOutputFile := client.MapClientFileNameToServerAbs(pchInvocation.OutputFile)
 	objCacheKey = common.SHA256{}
 	objCacheKey.FromLongHexString(pchInvocation.Hash)
 	if pathInObjCache := objFileCache.LookupInCache(objCacheKey); len(pathInObjCache) != 0 {
-		return os.Link(pathInObjCache, objOutputFile)
+		return os.Link(pathInObjCache, clientOutputFile)
 	}
 
-	cxxCwd := client.MapClientFileNameToServerAbs(pchInvocation.Cwd)
-	args := PrepareServerCompilerCmdLine(client, pchInvocation.InputFile, objOutputFile, pchInvocation.Args, pchInvocation.IDirs)
+	args := PrepareServerCompilerCmdLine(client, pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args, pchInvocation.IDirs)
 
 	// This code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
-	err = launchServerCompilerForPch(cxxCwd, pchInvocation.Compiler, args)
+	err = launchServerCompilerForPch(client.workingDir, pchInvocation.Cwd, pchInvocation.Compiler, args)
 	<-compilerLauncher.serverCompilerThrottle
 
 	if err != nil {
 		return err
 	}
 
-	if stat, err := os.Stat(objOutputFile); err == nil {
+	if stat, err := os.Stat(clientOutputFile); err == nil {
 		fileNameInCacheDir := fmt.Sprintf("%s.%s", path.Base(pchInvocation.InputFile), filepath.Ext(pchInvocation.OutputFile))
-		_ = objFileCache.SaveFileToCache(objOutputFile, fileNameInCacheDir, objCacheKey, stat.Size())
+		_ = objFileCache.SaveFileToCache(clientOutputFile, fileNameInCacheDir, objCacheKey, stat.Size())
 	}
 
 	return nil
@@ -114,7 +101,7 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 
 	// this code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
-	session.LaunchServerCompilerForCpp(client, compilerCmdLine, objFileCache)
+	session.LaunchServerCompilerForCpp(client.workingDir, compilerCmdLine, objFileCache)
 	<-compilerLauncher.serverCompilerThrottle
 
 	// save to obj cache (to be safe, only if compiler output is empty)
@@ -129,14 +116,22 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 	client.PushToClientReadyChannel(session)
 }
 
-func launchServerCompilerForPch(cwd string, compilerName string, args []string) error {
+func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerName string, args []string) error {
+	command := "proot"
+	prootarguments := []string{
+		"-R", workingDir,
+		"-w", compilerCwd,
+	}
+
+	prootarguments = append(prootarguments, defaultMappedFolders...)
+	prootarguments = append(prootarguments, compilerName)
+	prootarguments = append(prootarguments, args...)
+
 	var cxxStdout, cxxStderr bytes.Buffer
-	compilerCommand := exec.Command(compilerName, args...)
-	compilerCommand.Dir = cwd
+	compilerCommand := exec.Command(command, args...)
 	compilerCommand.Stderr = &cxxStderr
 	compilerCommand.Stdout = &cxxStdout
 
-	logServer.Info(1, "launch cxx for pch compilation", "cwd", cwd)
 	_ = compilerCommand.Run()
 
 	compilerExitCode := compilerCommand.ProcessState.ExitCode()
@@ -152,10 +147,19 @@ func launchServerCompilerForPch(cwd string, compilerName string, args []string) 
 	return nil
 }
 
-func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLine []string, objFileCache *ObjFileCache) {
-	compilerCommand := exec.Command(session.compilerName, compilerCmdLine...)
-	compilerCommand.Dir = session.compilerCwd
+func (session *Session) LaunchServerCompilerForCpp(workingDir string, compilerCmdLine []string, objFileCache *ObjFileCache) {
+	command := "proot"
+	prootarguments := []string{
+		"-R", workingDir,
+		"-w", session.compilerCwd,
+	}
+
+	prootarguments = append(prootarguments, defaultMappedFolders...)
+	prootarguments = append(prootarguments, session.compilerName)
+	prootarguments = append(prootarguments, compilerCmdLine...)
+
 	var compilerStdout, compilerStderr bytes.Buffer
+	compilerCommand := exec.Command(command, prootarguments...)
 	compilerCommand.Stderr = &compilerStderr
 	compilerCommand.Stdout = &compilerStdout
 
@@ -180,19 +184,6 @@ func (session *Session) LaunchServerCompilerForCpp(client *Client, compilerCmdLi
 	} else if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
 	}
-
-	session.compilerStdout = patchStdoutDropServerPaths(client, session.compilerStdout)
-	session.compilerStderr = patchStdoutDropServerPaths(client, session.compilerStderr)
-}
-
-// patchStdoutDropServerPaths replaces /tmp/nocc/cpp/clients/clientID/path/to/file.cpp with /path/to/file.cpp.
-// It's very handy to send back stdout/stderr without server paths.
-func patchStdoutDropServerPaths(client *Client, stdout []byte) []byte {
-	if len(stdout) == 0 {
-		return stdout
-	}
-
-	return bytes.ReplaceAll(stdout, []byte(client.workingDir), []byte{})
 }
 
 func ParsePchFile(pchFile *fileInClientDir) (pchCompilation *common.PCHInvocation, err error) {
