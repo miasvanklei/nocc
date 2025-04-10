@@ -16,8 +16,7 @@ import (
 func main() {
 	compiler, args := splitCompilerAndArgs(os.Args)
 	if shouldCompileLocally(args) {
-		os.Stderr.WriteString("[nocc] not a terminal compiling locally\n")
-		executeLocally(compiler, args, "")
+		executeLocally(compiler, args, "compiling locally")
 	}
 
 	c, err := net.Dial("unix", "/run/nocc-daemon.sock")
@@ -65,18 +64,20 @@ func splitCompilerAndArgs(args []string) (compiler string, arguments []string) {
 	return
 }
 
-func getPath() []string {
+func getPaths() []string {
 	return strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
 }
 
-func getPathCompiler(compiler string) (path_compiler string, err error) {
+func getCompiler(compiler string) (path_compiler string, err error) {
 	path_current_program, _ := os.Executable()
+	dir_curent_program := filepath.Dir(path_current_program)
 
-	for _, path := range getPath() {
-		path_compiler = filepath.Join(path, compiler)
-		if path_current_program == path_compiler {
+	for _, path := range getPaths() {
+		if path_current_program == filepath.Clean(dir_curent_program) {
 			continue
 		}
+
+		path_compiler = filepath.Join(path, compiler)
 		if _, err = os.Stat(path_compiler); err == nil {
 			return
 		}
@@ -88,10 +89,10 @@ func getPathCompiler(compiler string) (path_compiler string, err error) {
 
 func executeLocally(compiler string, arguments []string, error string) {
 	if error != "" {
-		os.Stderr.WriteString("[nocc]" + error + "\n")
+		os.Stderr.WriteString("[nocc] " + error + "\n")
 	}
 
-	path_compiler, err := getPathCompiler(compiler)
+	path_compiler, err := getCompiler(compiler)
 	if err != nil {
 		exitOnError(err)
 	}
