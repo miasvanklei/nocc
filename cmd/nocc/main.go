@@ -34,12 +34,12 @@ func main() {
 
 // We compile locally if we only need to preprocess or when input is from stdin.
 func shouldCompileLocally(args []string) bool {
-	return slices.Contains(args, "-") || slices.Contains(args, "-E")
+	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-o")
 }
 
 func exitOnError(err error) {
 	if err != nil {
-		os.Stderr.WriteString("[nocc]" + err.Error() + "\n")
+		os.Stderr.WriteString("[nocc] " + err.Error() + "\n")
 		os.Stderr.Close()
 		os.Exit(1)
 	}
@@ -68,23 +68,21 @@ func getPaths() []string {
 	return strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
 }
 
-func getCompiler(compiler string) (path_compiler string, err error) {
+func getCompiler(compiler string) (string, error) {
 	path_current_program, _ := os.Executable()
-	dir_curent_program := filepath.Dir(path_current_program)
 
 	for _, path := range getPaths() {
-		if path_current_program == filepath.Clean(dir_curent_program) {
+		path_compiler := filepath.Join(path, compiler)
+		real_path, err := filepath.EvalSymlinks(path_compiler)
+		if err != nil || path_current_program == real_path {
 			continue
 		}
 
-		path_compiler = filepath.Join(path, compiler)
-		if _, err = os.Stat(path_compiler); err == nil {
-			return
-		}
+		return path_compiler, nil
 	}
 
-	err = fmt.Errorf("compiler: %s not found in PATH", compiler)
-	return
+	err := fmt.Errorf("compiler: %s not found in PATH", compiler)
+	return "", err
 }
 
 func executeLocally(compiler string, arguments []string, error string) {
