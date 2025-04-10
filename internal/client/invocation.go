@@ -251,7 +251,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	}
 
 	// conftest.* built by autoconf is always done locally
-	if strings.Contains(invocation.objOutFile, "/dev/null") || strings.HasPrefix(invocation.cppInFile, "conftest.") || strings.HasPrefix(invocation.cppInFile, "tmp.conftest.") {
+	if strings.Contains(invocation.objOutFile, "/dev/null") || strings.HasPrefix(invocation.cppInFile, "conftest") || strings.HasPrefix(invocation.cppInFile, "tmp.conftest.") {
 		invocation.invokeType = invokedForLocalCompiling
 	} else if invocation.depsFlags.flagEmitPCH {
 		invocation.invokeType = invokedForCompilingPch
