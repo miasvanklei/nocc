@@ -38,19 +38,9 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher
 }
 
 // PrepareServercompilerCmdLine prepares a command line for compiler invocation.
-func PrepareServerCompilerCmdLine(client *Client, inputFile string, outputFile string, compilerArgs []string, compilerIDirs []string) []string {
-	compilerCmdLine := make([]string, 0, len(compilerIDirs)+len(compilerArgs)+3)
-
-	for i := 0; i < len(compilerIDirs); i += 2 {
-		compilerCmdLine = append(compilerCmdLine, compilerIDirs[i], compilerIDirs[i+1])
-	}
-
-	for _, compilerArg := range compilerArgs {
-		compilerCmdLine = append(compilerCmdLine, compilerArg)
-	}
-
+func PrepareServerCompilerCmdLine(inputFile string, outputFile string, compilerArgs []string) []string {
 	// build final string
-	return append(compilerCmdLine, "-o", outputFile, inputFile)
+	return append(compilerArgs, "-o", outputFile, inputFile)
 }
 
 func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, session *Session, objFileCache *ObjFileCache) error {
@@ -67,7 +57,7 @@ func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, 
 		return os.Link(pathInObjCache, clientOutputFile)
 	}
 
-	args := PrepareServerCompilerCmdLine(client, pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args, pchInvocation.IDirs)
+	args := PrepareServerCompilerCmdLine(pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args)
 
 	// This code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
@@ -96,7 +86,7 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 	}
 
 	session.OutputFile = objFileCache.GenerateObjOutFileName(client, session)
-	compilerCmdLine := PrepareServerCompilerCmdLine(client, session.InputFile, session.OutputFile, session.compilerArgs, session.compilerIDirs)
+	compilerCmdLine := PrepareServerCompilerCmdLine(session.InputFile, session.OutputFile, session.compilerArgs)
 	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, compilerCmdLine)
 
 	// this code is blocking until the compiler ends
@@ -116,7 +106,7 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 	client.PushToClientReadyChannel(session)
 }
 
-func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerName string, args []string) error {
+func execCompiler(workingDir string, compilerCwd string, compilerName string, args []string, compilerStdout io.Writer, compilerStderr io.Writer) (*exec.Cmd, error) {
 	command := "proot"
 	prootarguments := []string{
 		"-R", workingDir,
@@ -127,44 +117,34 @@ func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerN
 	prootarguments = append(prootarguments, compilerName)
 	prootarguments = append(prootarguments, args...)
 
-	var cxxStdout, cxxStderr bytes.Buffer
-	compilerCommand := exec.Command(command, args...)
-	compilerCommand.Stderr = &cxxStderr
-	compilerCommand.Stdout = &cxxStdout
+	compilerCommand := exec.Command(command, prootarguments...)
+	compilerCommand.Stderr = compilerStderr
+	compilerCommand.Stdout = compilerStdout
 
-	_ = compilerCommand.Run()
+	return compilerCommand, compilerCommand.Run()
+}
+
+func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerName string, compilerCmdLine []string) error {
+	var compilerStdout, compilerStderr bytes.Buffer
+	compilerCommand, _ := execCompiler(workingDir, compilerCwd, compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
 
 	compilerExitCode := compilerCommand.ProcessState.ExitCode()
 
 	if compilerExitCode != 0 {
 		logServer.Error("the C++ compiler exited with code", compilerExitCode,
-			"\ncmdLine:", compilerName, args,
-			"\ncxxStdout:", strings.TrimSpace(cxxStdout.String()),
-			"\ncxxStderr:", strings.TrimSpace(cxxStderr.String()))
-		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", compilerExitCode, cxxStdout.String()+cxxStderr.String())
+			"\ncmdLine:", compilerName, compilerCmdLine,
+			"\ncompilerStdout:", strings.TrimSpace(compilerStdout.String()),
+			"\ncxxStderr:", strings.TrimSpace(compilerStderr.String()))
+		return fmt.Errorf("could not compile pch: the C++ compiler exited with code %d\n%s", compilerExitCode, compilerStdout.String()+compilerStderr.String())
 	}
 
 	return nil
 }
 
 func (session *Session) LaunchServerCompilerForCpp(workingDir string, compilerCmdLine []string, objFileCache *ObjFileCache) {
-	command := "proot"
-	prootarguments := []string{
-		"-R", workingDir,
-		"-w", session.compilerCwd,
-	}
-
-	prootarguments = append(prootarguments, defaultMappedFolders...)
-	prootarguments = append(prootarguments, session.compilerName)
-	prootarguments = append(prootarguments, compilerCmdLine...)
-
 	var compilerStdout, compilerStderr bytes.Buffer
-	compilerCommand := exec.Command(command, prootarguments...)
-	compilerCommand.Stderr = &compilerStderr
-	compilerCommand.Stdout = &compilerStdout
-
 	start := time.Now()
-	err := compilerCommand.Run()
+	compilerCommand, err := execCompiler(workingDir, session.compilerCwd, session.compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
 
 	session.compilerDuration = int32(time.Since(start).Milliseconds())
 	session.compilerExitCode = int32(compilerCommand.ProcessState.ExitCode())

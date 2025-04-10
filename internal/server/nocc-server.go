@@ -107,7 +107,7 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 	// then we don't need to upload files from the client (and even don't need to link them from src cache)
 	// respond that we are waiting 0 files, and the client would immediately request for a compiled obj
 	// it's mostly a moment of optimization: avoid calling os.Link from src cache to working dir
-	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(session.compilerName, in.Args, session.files, session.InputFile)
+	session.objCacheKey = s.ObjFileCache.MakeObjCacheKey(session.compilerName, in.CompilerArgs, session.files, session.InputFile)
 	if pathInObjCache := s.ObjFileCache.LookupInCache(session.objCacheKey); len(pathInObjCache) != 0 {
 		session.objCacheExists = true
 		session.OutputFile = pathInObjCache // stream back this file directly

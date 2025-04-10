@@ -10,7 +10,6 @@ import (
 
 	"nocc/internal/common"
 	"nocc/pb"
-	"slices"
 )
 
 // IncludedFile is a dependency for a .cpp compilation (a resolved #include directive, a pch file, a .cpp itself).
@@ -40,20 +39,9 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
 func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
-	cppInFileAbs := invocation.GetCppInFileAbs()
-
-	compilerCmdLine := make([]string, 0, len(invocation.compilerArgs)+2*invocation.compilerIDirs.Count()+4)
+	compilerCmdLine := make([]string, 0, len(invocation.compilerArgs)+4)
 	compilerCmdLine = append(compilerCmdLine, invocation.compilerArgs...)
-	compilerCmdLine = append(compilerCmdLine, invocation.compilerIDirs.AsCompilerArgs()...)
-	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", cppInFileAbs)
-
-	// drop "-Xclang -emit-pch", as it outputs pch regardless of -M flag
-	for i, arg := range compilerCmdLine {
-		if arg == "-Xclang" && i < len(compilerCmdLine)-1 && compilerCmdLine[i+1] == "-emit-pch" {
-			compilerCmdLine = slices.Delete(compilerCmdLine, i, i+2)
-			break
-		}
-	}
+	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", invocation.cppInFile)
 
 	localLaunch := LocalCompilerLaunch{
 		cwd:      invocation.cwd,
@@ -72,7 +60,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
 	// We also need size and sha256 for every dependency: we'll use them to check whether they were already uploaded.
-	hFilesNames := extractIncludesFromCompilerMStdout(compilerStdout, cppInFileAbs)
+	hFilesNames := extractIncludesFromCompilerMStdout(compilerStdout, invocation.cppInFile)
 	hFiles = make([]*IncludedFile, 0, len(hFilesNames))
 	preallocatedBuf := make([]byte, 32*1024)
 
@@ -116,7 +104,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 		}
 	}
 
-	cppFile, err = fillSizeAndMTime(cppInFileAbs)
+	cppFile, err = fillSizeAndMTime(invocation.cppInFile)
 	return
 }
 

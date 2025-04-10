@@ -211,7 +211,6 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 		InputFile:  invocation.cppInFile,
 		OutputFile: invocation.objOutFile,
 		Args:       invocation.compilerArgs,
-		IDirs:      invocation.compilerIDirs.AsCompilerArgs(),
 	}
 
 	bytes, _ := json.Marshal(&pchinvocation)

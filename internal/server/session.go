@@ -24,8 +24,7 @@ type Session struct {
 	OutputFile    string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
 	compilerCwd   string // cwd for the compiler on a server-side (= client.workingDir + clientCwd)
 	compilerName  string // g++ / clang / etc.
-	compilerArgs  []string
-	compilerIDirs []string
+	compilerArgs  []string // all args for the compiler, including -I/-isystem/-L
 
 	files   []*fileInClientDir
 	pchFile *fileInClientDir
@@ -47,8 +46,7 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 		compilerName:  in.Compiler,
 		InputFile:     in.InputFile,
 		compilerCwd:   in.Cwd,
-		compilerArgs:  in.Args,
-		compilerIDirs: in.IDirs,
+		compilerArgs:  in.CompilerArgs,
 	}
 
 	for index, meta := range in.RequiredFiles {

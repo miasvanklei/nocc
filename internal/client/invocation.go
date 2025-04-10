@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -39,9 +38,7 @@ type Invocation struct {
 	cppInFile     string       // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile    string       // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	compilerName  string       // g++ / clang / etc.
-	compilerArgs  []string     // args like -Wall, -fpch-preprocess and many more, except:
-	compilerIDirs *IncludeDirs // -I / -iquote / -isystem go here
-	includeDirs   *IncludeDirs
+	compilerArgs  []string     // args like -Wall, -fpch-preprocess, -I{dir} and many more
 	depsFlags     DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
@@ -167,19 +164,19 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
 			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
-				invocation.compilerIDirs.dirsI = append(invocation.compilerIDirs.dirsI, pathAbs(invocation.cwd, dir))
+				invocation.compilerArgs = append(invocation.compilerArgs, "-I", pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-iquote", arg, &i); ok {
-				invocation.compilerIDirs.dirsIquote = append(invocation.compilerIDirs.dirsIquote, pathAbs(invocation.cwd, dir))
+				invocation.compilerArgs = append(invocation.compilerArgs, "-iquote", pathAbs(invocation.cwd, dir))
 				continue
 			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
-				invocation.compilerIDirs.dirsIsystem = append(invocation.compilerIDirs.dirsIsystem, pathAbs(invocation.cwd, dir))
+				invocation.compilerArgs = append(invocation.compilerArgs, "-isystem", pathAbs(invocation.cwd, dir))
 				continue
 			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
-				invocation.compilerIDirs.includePch = pathAbs(invocation.cwd, iFile)
+				invocation.compilerArgs = append(invocation.compilerArgs, "-include-pch", pathAbs(invocation.cwd, iFile))
 				continue
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
-				invocation.compilerIDirs.filesI = append(invocation.compilerIDirs.filesI, pathAbs(invocation.cwd, iFile))
+				invocation.compilerArgs = append(invocation.compilerArgs, "-include", pathAbs(invocation.cwd, iFile))
 				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
@@ -273,20 +270,10 @@ func CreateInvocation(req DaemonSockRequest) *Invocation {
 		cwd:           req.Cwd,
 		compilerName:  req.Compiler,
 		compilerArgs:  make([]string, 0, len(req.CmdLine)),
-		compilerIDirs: MakeIncludeDirs(),
 		summary:       MakeInvocationSummary(),
 	}
 
 	return invocation
-}
-
-// GetCppInFileAbs returns an absolute path to invocation.cppInFile.
-// (remember, that it's stored as-is from cmd line)
-func (invocation *Invocation) GetCppInFileAbs() string {
-	if invocation.cppInFile[0] == '/' {
-		return invocation.cppInFile
-	}
-	return path.Join(invocation.cwd, invocation.cppInFile)
 }
 
 func (invocation *Invocation) DoneRecvObj(err error) {

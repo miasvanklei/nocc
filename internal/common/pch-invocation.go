@@ -8,5 +8,4 @@ type PCHInvocation struct {
 	InputFile  string   `json:"inputFile"`
 	OutputFile string   `json:"outputFile"`
 	Args       []string `json:"args"`
-	IDirs      []string `json:"idirs"`
 }

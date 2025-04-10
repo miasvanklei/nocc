@@ -25,6 +25,7 @@ After extracting an archive with `tar -xvf nocc-xxx.tar.gz`, you'll get these 3 
 ## Installing nocc from sources
 
 You'll need Go and g++ to be installed (on Mac, `g++` is usually a symlink to `clang++`, that's okay).
+Noc also depends on "proot" to provide a virtual root on a nocc-server.
 
 Clone this repo, proceed to its root, and run:
 
