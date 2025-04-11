@@ -4,6 +4,5 @@ After=network.target
 Requires=nocc-daemon.socket
 
 [Service]
-EnvironmentFile=/etc/nocc/daemon.conf
 ExecStart=/usr/lib/nocc/bin/nocc-daemon start
 Type=notify

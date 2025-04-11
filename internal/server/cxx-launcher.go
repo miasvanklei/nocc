@@ -27,7 +27,7 @@ type CompilerLauncher struct {
 	serverCompilerThrottle chan struct{}
 }
 
-func MakeCompilerLauncher(maxParallelCompilerProcesses int64) (*CompilerLauncher, error) {
+func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, error) {
 	if maxParallelCompilerProcesses <= 0 {
 		return nil, fmt.Errorf("invalid maxParallelcompilerProcesses %d", maxParallelCompilerProcesses)
 	}

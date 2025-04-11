@@ -46,6 +46,13 @@ func MakeDaemonRpcListener() *DaemonUnixSockListener {
 
 func (listener *DaemonUnixSockListener) StartListeningUnixSocket() (err error) {
 	listeners, err := activation.Listeners()
+	if err != nil {
+		return
+	}
+	if len(listeners) == 0 {
+		return fmt.Errorf("no socket to listen to")
+	}
+	
 	listener.netListener = listeners[0]
 	return
 }

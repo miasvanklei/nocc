@@ -14,7 +14,7 @@ type LoggerWrapper struct {
 	duplicateToStderr bool
 }
 
-func MakeLogger(logFile string, verbosity int64, noLogsIfEmpty bool, duplicateToStderr bool) (*LoggerWrapper, error) {
+func MakeLogger(logFile string, verbosity int, duplicateToStderr bool) (*LoggerWrapper, error) {
 	var impl *log.Logger
 
 	if logFile != "" && logFile != "stderr" {
@@ -23,7 +23,7 @@ func MakeLogger(logFile string, verbosity int64, noLogsIfEmpty bool, duplicateTo
 			return nil, err
 		}
 		impl = log.New(out, "", 0)
-	} else if !noLogsIfEmpty {
+	} else if logFile == "" || logFile == "stderr" {
 		impl = log.New(os.Stderr, "", 0)
 	}
 
@@ -34,7 +34,7 @@ func MakeLogger(logFile string, verbosity int64, noLogsIfEmpty bool, duplicateTo
 	return &LoggerWrapper{
 		impl:              impl,
 		fileName:          logFile,
-		verbosity:         int(verbosity),
+		verbosity:         verbosity,
 		duplicateToStderr: duplicateToStderr,
 	}, nil
 }

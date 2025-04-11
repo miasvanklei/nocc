@@ -1,0 +1,8 @@
+ListenAddr = "localhost:43210"
+CompilerQueueSize = 1
+LogFileName = /var/log/nocc-server.log 
+LogLevel = 1 
+SrcCacheDir = "/tmp/nocc"
+ObjCacheDir = "/tmp/noc" 
+SrcCacheSize = 1073741824
+ObjCacheSize = 1073741824

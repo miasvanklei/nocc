@@ -76,7 +76,7 @@ func detectClientID() string {
 	return string(b)
 }
 
-func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompilerProcesses int64) (*Daemon, error) {
+func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompilerProcesses int) (*Daemon, error) {
 	daemon := &Daemon{
 		startTime:             time.Now(),
 		quitDaemonChan:        make(chan int),

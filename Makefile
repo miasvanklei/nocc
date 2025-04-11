@@ -17,11 +17,11 @@ define build_client
 endef
 
 define build_daemon
-    go build -o $(1)/nocc-daemon -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-daemon/main.go
+    go build -o $(1)/nocc-daemon -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-daemon/*.go
 endef
 
 define build_server
-	go build -o $(1)/nocc-server -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-server/main.go
+	go build -o $(1)/nocc-server -trimpath -ldflags '-s -w -X "nocc/internal/common.version=${VERSION}"' cmd/nocc-server/*.go
 endef
 
 .PHONY: protogen
@@ -55,6 +55,11 @@ install.bin:
 	install -D -m 755 bin/nocc $(PREFIX)/lib/nocc/bin/nocc
 	install -D -m 755 bin/nocc-daemon $(PREFIX)/lib/nocc/bin/nocc-daemon
 	install -D -m 755 bin/nocc-server $(PREFIX)/lib/nocc/bin/nocc-server
+
+.PHONY: install.config
+install.config:
+	install -D -m 644 data/nocc-daemon.conf.example $(ETCDIR)/nocc/daemon.conf.example
+	install -D -m 644 data/nocc-server.conf.example $(ETCDIR)/nocc/server.conf.example
 
 clean:
 	rm -f bin/nocc bin/nocc-daemon bin/nocc-server

@@ -1,0 +1,5 @@
+SocksProxyAddr = ""
+CompilerQueueSize = 1
+Servers = [ "localhost:43210" ]
+LogFileName = "/var/log/nocc-daemon.log"
+LogLevel = 1
