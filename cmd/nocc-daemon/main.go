@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	sdaemon "github.com/coreos/go-systemd/v22/daemon"
 	"nocc/internal/client"
 	"nocc/internal/common"
+
+	sdaemon "github.com/coreos/go-systemd/v22/daemon"
 )
 
 func failedStartDaemon(err any) {
@@ -20,7 +21,7 @@ func main() {
 	showVersionAndExitShort := common.CmdEnvBool("Show version and exit.", false,
 		"v")
 
-	configuration, err := ParseConfiguration("/etc/nocc/daemon.toml")
+	configuration, err := client.ParseConfiguration("/etc/nocc/daemon.toml")
 	if err != nil {
 		failedStartDaemon("Failed to parse configuration: " + err.Error())
 	}
@@ -32,11 +33,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	if err := client.MakeLoggerClient(configuration.LogFileName, configuration.LogLevel); err != nil {
+	if err := client.MakeLoggerClient(configuration); err != nil {
 		failedStartDaemon(err)
 	}
 
-	daemon, err := client.MakeDaemon(configuration.Servers, configuration.SocksProxyAddr, configuration.CompilerQueueSize)
+	daemon, err := client.MakeDaemon(configuration)
 	if err != nil {
 		failedStartDaemon(err)
 	}

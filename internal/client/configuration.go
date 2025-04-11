@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"runtime"
@@ -12,6 +12,8 @@ type Configuration struct {
 	Servers           []string
 	LogFileName       string
 	LogLevel          int
+	InvocationTimeout int
+	ConnectionTimeout int
 }
 
 func ParseConfiguration(filePath string) (*Configuration, error) {
@@ -20,6 +22,8 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		Servers:           []string{"localhost:43210"},
 		LogFileName:       "stderr",
 		LogLevel:          1,
+		InvocationTimeout: 10 * 60, // 10 minutes
+		ConnectionTimeout: 15,      // 15 seconds
 	}
 	if _, err := toml.DecodeFile(filePath, &config); err != nil {
 		return nil, err

@@ -27,10 +27,6 @@ const (
 	StateConnecting
 )
 
-const (
-	timeoutForceInterruptInvocation = 12 * time.Minute
-)
-
 // Daemon is created once, in a separate process `nocc-daemon`, which is listening for connections via unix socket.
 // `nocc-daemon` is created by the first `nocc` invocation.
 // `nocc` is invoked from cmake/kphp. It's a lightweight C++ wrapper that pipes command-line invocation to a daemon.
@@ -53,6 +49,8 @@ type Daemon struct {
 
 	totalInvocations  atomic.Uint32
 	activeInvocations map[uint32]*Invocation
+	invocationTimeout time.Duration
+	connectionTimeout time.Duration
 
 	mu sync.RWMutex
 }
@@ -76,17 +74,19 @@ func detectClientID() string {
 	return string(b)
 }
 
-func MakeDaemon(remoteNoccHosts []string, socksProxyAddr string, maxLocalcompilerProcesses int) (*Daemon, error) {
+func MakeDaemon(configuration *Configuration) (*Daemon, error) {
 	daemon := &Daemon{
 		startTime:             time.Now(),
 		quitDaemonChan:        make(chan int),
 		clientID:              detectClientID(),
-		remoteConnections:     make([]*RemoteConnection, len(remoteNoccHosts)),
-		remoteNoccHosts:       remoteNoccHosts,
-		socksProxyAddr:        socksProxyAddr,
-		localCompilerThrottle: make(chan struct{}, maxLocalcompilerProcesses),
-		disableLocalCompiler:  maxLocalcompilerProcesses == 0,
+		remoteConnections:     make([]*RemoteConnection, len(configuration.Servers)),
+		remoteNoccHosts:       configuration.Servers,
+		socksProxyAddr:        configuration.SocksProxyAddr,
+		localCompilerThrottle: make(chan struct{}, configuration.CompilerQueueSize),
+		disableLocalCompiler:  configuration.CompilerQueueSize == 0,
 		activeInvocations:     make(map[uint32]*Invocation, 300),
+		invocationTimeout: time.Duration(configuration.InvocationTimeout) * time.Second,
+		connectionTimeout: time.Duration(configuration.ConnectionTimeout) * time.Second,
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -301,7 +301,7 @@ func (daemon *Daemon) PeriodicallyInterruptHangedInvocations() {
 		case <-time.After(10 * time.Second):
 			daemon.mu.Lock()
 			for _, invocation := range daemon.activeInvocations {
-				if time.Since(invocation.createTime) > timeoutForceInterruptInvocation {
+				if time.Since(invocation.createTime) > daemon.invocationTimeout {
 					invocation.ForceInterrupt(fmt.Errorf("interrupt sessionID %d (%s) after %d sec timeout", invocation.sessionID, invocation.summary.remoteHost, int(time.Since(invocation.createTime).Seconds())))
 				}
 			}

@@ -52,7 +52,7 @@ func (listener *DaemonUnixSockListener) StartListeningUnixSocket() (err error) {
 	if len(listeners) == 0 {
 		return fmt.Errorf("no socket to listen to")
 	}
-	
+
 	listener.netListener = listeners[0]
 	return
 }
@@ -84,7 +84,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 
 		case <-time.After(5 * time.Second):
 			nActive := listener.activeConnections.Load()
-			if nActive == 0 && time.Since(listener.lastTimeAlive).Seconds() > 15 {
+			if nActive == 0 && time.Since(listener.lastTimeAlive) > daemon.connectionTimeout {
 				daemon.QuitDaemonGracefully("no connections receiving anymore")
 			}
 		}
