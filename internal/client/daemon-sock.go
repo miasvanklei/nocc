@@ -129,7 +129,7 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 	listener.activeConnections.Add(-1)
 	listener.lastTimeAlive = time.Now()
 
-	listener.respondOk(conn, &response)
+	listener.respondOk(conn, response)
 }
 
 func getConnectedUser(conn net.Conn) (uid int, gid int) {

@@ -162,7 +162,7 @@ func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason er
 	}
 }
 
-func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
+func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) *DaemonSockResponse {
 	invocation := CreateInvocation(req)
 	invocation.ParseCmdLineInvocation(req.CmdLine)
 
@@ -190,14 +190,18 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse
 		result, err := daemon.invokeForRemoteCompiling(invocation)
 
 		if err != nil || result.ExitCode != 0 {
-			return daemon.InvokeLocalCompilation(req, err)
+			result = daemon.InvokeLocalCompilation(req, err)
 		}
 
-		return *result
+		if result.ExitCode == 0 {
+			result.Stderr = fmt.Appendf(nil, "compiling %s remotely on %s failed, but succeeded locally\n", invocation.cppInFile, invocation.summary.remoteHost)
+		}
+
+		return result
 	}
 }
 
-func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) DaemonSockResponse {
+func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) *DaemonSockResponse {
 	response := daemon.InvokeLocalCompilation(req, nil)
 	if response.ExitCode != 0 {
 		return response
@@ -253,7 +257,7 @@ func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonS
 	return &reply, nil
 }
 
-func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) DaemonSockResponse {
+func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) *DaemonSockResponse {
 	if reason != nil {
 		logClient.Error("compiling locally:", reason)
 	}
@@ -262,7 +266,7 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 	if daemon.disableLocalCompiler {
 		reply.ExitCode = 1
 		reply.Stderr = []byte("fallback to local compiler disabled")
-		return reply
+		return &reply
 	}
 
 	daemon.localCompilerThrottle <- struct{}{}
@@ -270,7 +274,7 @@ func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error
 	reply.ExitCode, reply.Stdout, reply.Stderr = localcompiler.RunCompilerLocally()
 	<-daemon.localCompilerThrottle
 
-	return reply
+	return &reply
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {
