@@ -190,10 +190,14 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) *DaemonSockRespons
 
 		if err != nil || result.ExitCode != 0 {
 			result = daemon.InvokeLocalCompilation(req, err)
+		} else {
+			return result
 		}
 
 		if result.ExitCode == 0 {
-			result.Stderr = fmt.Appendf(nil, "compiling %s remotely on %s failed, but succeeded locally\n", invocation.cppInFile, invocation.summary.remoteHost)
+			message := fmt.Sprintf("compiling %s remotely on %s succeeded\n", invocation.cppInFile, invocation.summary.remoteHost)
+			logClient.Error(message)
+			result.Stderr = fmt.Appendf(nil, message)
 		}
 
 		return result
