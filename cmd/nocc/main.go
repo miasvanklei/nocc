@@ -34,9 +34,9 @@ func main() {
 
 // We compile locally under the following conditions:
 // - the user specified "-", or "-E"
-// - the user did not specify "-o" or "-c"
+// - the user did not specify or "-c"
 func shouldCompileLocally(args []string) bool {
-	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-o") || !slices.Contains(args, "-c")
+	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-c")
 }
 
 func exitOnError(err error) {

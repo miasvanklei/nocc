@@ -160,6 +160,9 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			continue
 		}
 		if arg[0] == '-' {
+			if arg == "-c" {
+				invocation.invokeType = invokedForCompilingCpp
+			}
 			if oFile, ok := parseArgFile("-o", arg, &i); ok {
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
@@ -252,8 +255,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		invocation.invokeType = invokedForLocalCompiling
 	} else if invocation.depsFlags.flagEmitPCH {
 		invocation.invokeType = invokedForCompilingPch
-	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
-		invocation.invokeType = invokedForCompilingCpp
+	} else if invocation.cppInFile != "" && invocation.invokeType == invokedForCompilingCpp {
+		return
 	} else if invocation.objOutFile != "" {
 		invocation.invokeType = invokedForLinking
 	} else {
