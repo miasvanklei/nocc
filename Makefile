@@ -42,7 +42,7 @@ server: protogen
 	$(call build_server,bin)
 
 .PHONY: install
-install: install.bin install.systemd
+install: install.bin install.systemd install.config
 
 .PHONY: install.systemd
 install.systemd:
