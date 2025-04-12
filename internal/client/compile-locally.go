@@ -23,8 +23,6 @@ type LocalCompilerLaunch struct {
 }
 
 func (localcompiler *LocalCompilerLaunch) RunCompilerLocally() (exitCode int, stdout []byte, stderr []byte) {
-	logClient.Info(0, "compile locally", localcompiler.cmdLine)
-
 	var compilerStdout, compilerStderr bytes.Buffer
 	compilerCommand := exec.Command(localcompiler.compiler, localcompiler.cmdLine...)
 	compilerCommand.Dir = localcompiler.cwd
