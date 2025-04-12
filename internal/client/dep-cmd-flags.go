@@ -64,7 +64,7 @@ func (deps *DepCmdFlags) SetCmdFlagMP() {
 
 // ShouldGenerateDepFile determines whether to output .o.d file besides .o compilation
 func (deps *DepCmdFlags) ShouldGenerateDepFile() bool {
-	return deps.flagMD || deps.flagMF != ""
+	return deps.flagMD || deps.flagMMD || deps.flagMF != ""
 }
 
 // GenerateAndSaveDepFile is called if a .o.d file generation is needed.

@@ -207,7 +207,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-MP" {
 				invocation.depsFlags.SetCmdFlagMP()
 				continue
-			} else if arg == "-M" || arg == "-MM" || arg == "-MG" || arg == "-MMD" {
+			} else if arg == "-M" || arg == "-MM" || arg == "-MG" {
 				// these dep flags are unsupported yet, cmake doesn't use them
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
