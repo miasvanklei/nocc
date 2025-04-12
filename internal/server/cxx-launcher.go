@@ -20,20 +20,21 @@ var defaultMappedFolders = []string{
 	"-b", "/usr/bin",
 	"-b", "/bin",
 	"-b", "/etc",
-	"-b", "/tmp/nocc",
 }
 
 type CompilerLauncher struct {
 	serverCompilerThrottle chan struct{}
+	prootMappedDirs        []string
 }
 
-func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, error) {
+func MakeCompilerLauncher(maxParallelCompilerProcesses int, objCacheDir string) (*CompilerLauncher, error) {
 	if maxParallelCompilerProcesses <= 0 {
 		return nil, fmt.Errorf("invalid maxParallelcompilerProcesses %d", maxParallelCompilerProcesses)
 	}
 
 	return &CompilerLauncher{
 		serverCompilerThrottle: make(chan struct{}, maxParallelCompilerProcesses),
+		prootMappedDirs:        append(defaultMappedFolders, "-b", objCacheDir),
 	}, nil
 }
 
@@ -61,7 +62,7 @@ func (compilerLauncher *CompilerLauncher) LaunchPchWhenPossible(client *Client, 
 
 	// This code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
-	err = launchServerCompilerForPch(client.workingDir, pchInvocation.Cwd, pchInvocation.Compiler, args)
+	err = compilerLauncher.launchServerCompilerForPch(client.workingDir, pchInvocation.Cwd, pchInvocation.Compiler, args)
 	<-compilerLauncher.serverCompilerThrottle
 
 	if err != nil {
@@ -91,7 +92,7 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 
 	// this code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
-	session.LaunchServerCompilerForCpp(client.workingDir, compilerCmdLine, objFileCache)
+	session.LaunchServerCompilerForCpp(compilerLauncher, client.workingDir, compilerCmdLine, objFileCache)
 	<-compilerLauncher.serverCompilerThrottle
 
 	// save to obj cache (to be safe, only if compiler output is empty)
@@ -106,14 +107,14 @@ func (compilerLauncher *CompilerLauncher) LaunchCompilerWhenPossible(client *Cli
 	client.PushToClientReadyChannel(session)
 }
 
-func execCompiler(workingDir string, compilerCwd string, compilerName string, args []string, compilerStdout io.Writer, compilerStderr io.Writer) (*exec.Cmd, error) {
+func (compilerLauncher *CompilerLauncher) execCompiler(workingDir string, compilerCwd string, compilerName string, args []string, compilerStdout io.Writer, compilerStderr io.Writer) (*exec.Cmd, error) {
 	command := "proot"
 	prootarguments := []string{
 		"-R", workingDir,
 		"-w", compilerCwd,
 	}
 
-	prootarguments = append(prootarguments, defaultMappedFolders...)
+	prootarguments = append(prootarguments, compilerLauncher.prootMappedDirs...)
 	prootarguments = append(prootarguments, compilerName)
 	prootarguments = append(prootarguments, args...)
 
@@ -124,9 +125,9 @@ func execCompiler(workingDir string, compilerCwd string, compilerName string, ar
 	return compilerCommand, compilerCommand.Run()
 }
 
-func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerName string, compilerCmdLine []string) error {
+func (compilerLauncher *CompilerLauncher) launchServerCompilerForPch(workingDir string, compilerCwd string, compilerName string, compilerCmdLine []string) error {
 	var compilerStdout, compilerStderr bytes.Buffer
-	compilerCommand, _ := execCompiler(workingDir, compilerCwd, compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
+	compilerCommand, _ := compilerLauncher.execCompiler(workingDir, compilerCwd, compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
 
 	compilerExitCode := compilerCommand.ProcessState.ExitCode()
 
@@ -141,10 +142,10 @@ func launchServerCompilerForPch(workingDir string, compilerCwd string, compilerN
 	return nil
 }
 
-func (session *Session) LaunchServerCompilerForCpp(workingDir string, compilerCmdLine []string, objFileCache *ObjFileCache) {
+func (session *Session) LaunchServerCompilerForCpp(compilerLauncher *CompilerLauncher, workingDir string, compilerCmdLine []string, objFileCache *ObjFileCache) {
 	var compilerStdout, compilerStderr bytes.Buffer
 	start := time.Now()
-	compilerCommand, err := execCompiler(workingDir, session.compilerCwd, session.compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
+	compilerCommand, err := compilerLauncher.execCompiler(workingDir, session.compilerCwd, session.compilerName, compilerCmdLine, &compilerStdout, &compilerStderr)
 
 	session.compilerDuration = int32(time.Since(start).Milliseconds())
 	session.compilerExitCode = int32(compilerCommand.ProcessState.ExitCode())

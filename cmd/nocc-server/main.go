@@ -21,12 +21,12 @@ func failedStart(message string, err error) {
 // prepareEmptyDir ensures that serverDir exists and is empty
 // it's executed on server launch
 // as a consequence, all file caches are lost on restart
-func prepareEmptyDir(parentDir *string, subdir string) string {
+func prepareEmptyDir(parentDir string, subdir string) string {
 	// if /tmp/nocc/cpp/src-cache already exists, it means, that it contains files from a previous launch
 	// to start up as quickly as possible, do the following:
 	// 1) rename it to /tmp/nocc/cpp/src-cache.old
 	// 2) clear it recursively in the background
-	serverDir := path.Join(*parentDir, subdir)
+	serverDir := path.Join(parentDir, subdir)
 	if _, err := os.Stat(serverDir); err == nil {
 		oldDirRenamed := fmt.Sprintf("%s.old.%d", serverDir, time.Now().Unix())
 		if err := os.Rename(serverDir, oldDirRenamed); err != nil {
@@ -69,22 +69,22 @@ func main() {
 
 	s := &server.NoccServer{}
 
-	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(&configuration.SrcCacheDir, "clients"))
+	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(configuration.SrcCacheDir, "clients"))
 	if err != nil {
 		failedStart("Failed to init clients hashtable", err)
 	}
 
-	s.CompilerLauncher, err = server.MakeCompilerLauncher(configuration.CompilerQueueSize)
+	s.CompilerLauncher, err = server.MakeCompilerLauncher(configuration.CompilerQueueSize, configuration.ObjCacheDir)
 	if err != nil {
 		failedStart("Failed to init compiler launcher", err)
 	}
 
-	s.SrcFileCache, err = server.MakeSrcFileCache(prepareEmptyDir(&configuration.SrcCacheDir, "src-cache"), configuration.SrcCacheSize)
+	s.SrcFileCache, err = server.MakeSrcFileCache(prepareEmptyDir(configuration.SrcCacheDir, "src-cache"), configuration.SrcCacheSize)
 	if err != nil {
 		failedStart("Failed to init src file cache", err)
 	}
 
-	s.ObjFileCache, err = server.MakeObjFileCache(prepareEmptyDir(&configuration.ObjCacheDir, "obj-cache"), prepareEmptyDir(&configuration.ObjCacheDir, "compiler-out"), configuration.ObjCacheSize)
+	s.ObjFileCache, err = server.MakeObjFileCache(prepareEmptyDir(configuration.ObjCacheDir, "obj-cache"), prepareEmptyDir(configuration.ObjCacheDir, "compiler-out"), configuration.ObjCacheSize)
 	if err != nil {
 		failedStart("Failed to init obj file cache", err)
 	}
