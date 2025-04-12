@@ -244,7 +244,7 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 	// if a trailer "sessionID" won't reach a client,
 	// it would still think that a session is in the process of remote compilation
 	// and will clear it after some timeout
-	onError := func(sessionID uint32, format string, a ...interface{}) error {
+	onError := func(sessionID uint32, format string, a ...any) error {
 		stream.SetTrailer(metadata.Pairs("sessionID", strconv.Itoa(int(sessionID))))
 		err := fmt.Errorf(format, a...)
 		logServer.Error(err)
@@ -260,13 +260,7 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 			client.lastSeen = time.Now()
 
 			if session.compilerExitCode != 0 {
-				err := stream.Send(&pb.RecvCompiledObjChunkReply{
-					SessionID:        session.sessionID,
-					CompilerExitCode: session.compilerExitCode,
-					CompilerStdout:   session.compilerStdout,
-					CompilerStderr:   session.compilerStderr,
-					CompilerDuration: session.compilerDuration,
-				})
+				err := sendFailureMessage(stream, session)
 				if err != nil {
 					return onError(session.sessionID, "can't send obj non-0 reply sessionID %d clientID %s %v", session.sessionID, client.clientID, err)
 				}

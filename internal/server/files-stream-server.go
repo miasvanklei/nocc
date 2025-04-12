@@ -59,6 +59,18 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 		return err
 	}
 
+	err = stream.Send(&pb.RecvCompiledObjChunkReply{
+		SessionID:        session.sessionID,
+		CompilerExitCode: session.compilerExitCode,
+		CompilerStdout:   session.compilerStdout,
+		CompilerStderr:   session.compilerStderr,
+		CompilerDuration: session.compilerDuration,
+		FileSize:         stat.Size(),
+	})
+	if err != nil {
+		return err
+	}
+
 	var n int
 	for {
 		n, err = fd.Read(chunkBuf)
@@ -69,13 +81,8 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 			return err
 		}
 		err = stream.Send(&pb.RecvCompiledObjChunkReply{
-			SessionID:   session.sessionID,
-			CompilerExitCode: session.compilerExitCode,
-			CompilerStdout:   session.compilerStdout,
-			CompilerStderr:   session.compilerStderr,
-			CompilerDuration: session.compilerDuration,
-			FileSize:    stat.Size(),
-			ChunkBody:   chunkBuf[:n],
+			SessionID: session.sessionID,
+			ChunkBody: chunkBuf[:n],
 		})
 		if err != nil {
 			return err
@@ -85,4 +92,14 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 	// after sending a compiled obj, the client doesn't respond in any way,
 	// so we don't call stream.Recv(), the stream is already ready to send other objs
 	return nil
+}
+
+func sendFailureMessage(stream pb.CompilationService_RecvCompiledObjStreamServer, session *Session) error {
+	return stream.Send(&pb.RecvCompiledObjChunkReply{
+		SessionID:        session.sessionID,
+		CompilerExitCode: int32(session.compilerExitCode),
+		CompilerStdout:   session.compilerStdout,
+		CompilerStderr:   session.compilerStderr,
+		CompilerDuration: session.compilerDuration,
+	})
 }

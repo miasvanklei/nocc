@@ -118,7 +118,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 			continue
 		}
 
-		err, needRecreateStream := receiveObjFileByChunks(stream, firstChunk, invocation)
+		err, needRecreateStream := receiveObjFileByChunks(stream, invocation, int(firstChunk.FileSize))
 		invocation.DoneRecvObj(err)
 
 		// recreate a stream if it's corrupted, like chunks mismatch
@@ -134,27 +134,15 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 
 // receiveObjFileByChunks is an actual implementation of saving a server stream to a local client .o file.
 // See server.sendObjFileByChunks.
-func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, firstChunk *pb.RecvCompiledObjChunkReply, invocation *Invocation) (error, bool) {
-	receivedBytes := len(firstChunk.ChunkBody)
-	expectedBytes := int(firstChunk.FileSize)
-
+func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, invocation *Invocation, fileSize int) (error, bool) {
 	var errWrite error
 	var errRecv error
-
-	if receivedBytes >= expectedBytes {
-		// if a dir for objOutFile doesn't exist, it will fail; g++/clang act the same
-		errWrite = invocation.WriteFile(invocation.objOutFile, firstChunk.ChunkBody)
-		return errWrite, false
-	}
+	var receivedBytes int
 
 	fileTmp, errWrite := invocation.OpenTempFile(invocation.objOutFile)
 
-	if errWrite == nil {
-		_, errWrite = fileTmp.Write(firstChunk.ChunkBody)
-	}
-
 	var nextChunk *pb.RecvCompiledObjChunkReply
-	for receivedBytes < expectedBytes {
+	for receivedBytes < fileSize {
 		nextChunk, errRecv = stream.Recv()
 		if errRecv != nil { // EOF is also unexpected
 			break
@@ -162,7 +150,7 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 		if errWrite == nil {
 			_, errWrite = fileTmp.Write(nextChunk.ChunkBody)
 		}
-		if nextChunk.SessionID != firstChunk.SessionID {
+		if nextChunk.SessionID != invocation.sessionID {
 			errRecv = fmt.Errorf("inconsistent stream, chunks mismatch")
 			break
 		}
