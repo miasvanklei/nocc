@@ -21,7 +21,7 @@ func main() {
 	showVersionAndExitShort := common.CmdEnvBool("Show version and exit.", false,
 		"v")
 
-	configuration, err := client.ParseConfiguration("/etc/nocc/daemon.toml")
+	configuration, err := client.ParseConfiguration("/etc/nocc/daemon.conf")
 	if err != nil {
 		failedStartDaemon("Failed to parse configuration: " + err.Error())
 	}

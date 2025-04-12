@@ -51,7 +51,7 @@ func main() {
 	showVersionAndExitShort := common.CmdEnvBool("Show version and exit", false,
 		"v")
 
-	configuration, err := ParseConfiguration("/etc/nocc/server.toml")
+	configuration, err := ParseConfiguration("/etc/nocc/server.conf")
 	if err != nil {
 		failedStart("Failed to parse configuration", err)
 	}
