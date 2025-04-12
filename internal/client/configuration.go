@@ -22,7 +22,7 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		CompilerQueueSize: runtime.NumCPU(),
 		Servers:           []string{"localhost:43210"},
 		LogFileName:       "stderr",
-		LogLevel:          1,
+		LogLevel:          0,
 		InvocationTimeout: 10 * 60, // 10 minutes
 		ConnectionTimeout: 15,      // 15 seconds
 		ClientID:          "",

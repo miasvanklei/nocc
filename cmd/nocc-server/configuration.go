@@ -22,7 +22,7 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		ListenAddr:        "localhost:43210",
 		CompilerQueueSize: runtime.NumCPU(),
 		LogFileName:       "stderr",
-		LogLevel:          1,
+		LogLevel:          0,
 		SrcCacheDir:       "/tmp/nocc/cpp",
 		ObjCacheDir:       "/tmp/nocc/obj",
 		SrcCacheSize:      4 * 1024 * 1024 * 1024,
