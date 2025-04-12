@@ -7,6 +7,7 @@ import (
 )
 
 type Configuration struct {
+	ClientID          string
 	SocksProxyAddr    string
 	CompilerQueueSize int
 	Servers           []string
@@ -24,6 +25,7 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		LogLevel:          1,
 		InvocationTimeout: 10 * 60, // 10 minutes
 		ConnectionTimeout: 15,      // 15 seconds
+		ClientID:          "",
 	}
 	if _, err := toml.DecodeFile(filePath, &config); err != nil {
 		return nil, err

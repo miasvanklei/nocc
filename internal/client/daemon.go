@@ -58,8 +58,7 @@ type Daemon struct {
 // detectClientID returns a clientID for current daemon launch.
 // It's either controlled by env NOCC_CLIENT_ID or a random set of chars
 // (it means, that after a daemon dies and launches again after some time, it becomes a new client for the server).
-func detectClientID() string {
-	clientID := os.Getenv("NOCC_CLIENT_ID")
+func detectClientID(clientID string) string {
 	if clientID != "" {
 		return clientID
 	}
@@ -78,7 +77,7 @@ func MakeDaemon(configuration *Configuration) (*Daemon, error) {
 	daemon := &Daemon{
 		startTime:             time.Now(),
 		quitDaemonChan:        make(chan int),
-		clientID:              detectClientID(),
+		clientID:              detectClientID(configuration.ClientID),
 		remoteConnections:     make([]*RemoteConnection, len(configuration.Servers)),
 		remoteNoccHosts:       configuration.Servers,
 		socksProxyAddr:        configuration.SocksProxyAddr,
