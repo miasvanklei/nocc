@@ -36,16 +36,17 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int, objCacheDir string) 
 	}, nil
 }
 
-func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerCwd string, compilerName string, compilerArgs []string) (int, int32, []byte, []byte) {
+func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerCwd string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
 	command := "proot"
-	prootarguments := make([]string, 0, len(compilerLauncher.prootMappedDirs)+5+len(compilerArgs))
+	prootarguments := make([]string, 0, len(compilerLauncher.prootMappedDirs)+9+len(compilerArgs))
 
 	prootarguments = append(prootarguments, "-R", workingDir)
 	prootarguments = append(prootarguments, "-w", compilerCwd)
 	prootarguments = append(prootarguments, compilerLauncher.prootMappedDirs...)
 	prootarguments = append(prootarguments, compilerName)
 	prootarguments = append(prootarguments, compilerArgs...)
+	prootarguments = append(prootarguments, "-o", compileOutput, "-c", compileInput)
 
 	compilerCommand := exec.Command(command, prootarguments...)
 	compilerCommand.Stderr = &compilerStderrBuffer
