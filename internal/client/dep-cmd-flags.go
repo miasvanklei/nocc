@@ -20,16 +20,11 @@ import (
 // Some are unsupported (-M / -MG / ....). When they occur, nocc falls back to local compilation.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html.
 type DepCmdFlags struct {
-	flagEmitPCH bool   // -x c++/c/objective-c/objective-c-header (pre-resolved at cwd)
 	flagMF      string // -MF {abs filename} (pre-resolved at cwd)
 	flagMT      string // -MT/-MQ (target name)
 	flagMD      bool   // -MD (like -MF {def file})
 	flagMMD     bool   // -MMD (mention only user header files, not system header files)
 	flagMP      bool   // -MP (add a phony target for each dependency other than the main file)
-}
-
-func (deps *DepCmdFlags) SetCmdFlagEmitPCH() {
-	deps.flagEmitPCH = true
 }
 
 func (deps *DepCmdFlags) SetCmdFlagMF(absFilename string) {

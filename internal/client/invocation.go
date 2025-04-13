@@ -80,7 +80,9 @@ func isCXXSourceFileName(fileName string) bool {
 		strings.HasSuffix(fileName, ".c++") ||
 		strings.HasSuffix(fileName, ".C++") ||
 		strings.HasSuffix(fileName, ".CXX") ||
-		strings.HasSuffix(fileName, ".ii")
+		strings.HasSuffix(fileName, ".ii") ||
+		strings.HasSuffix(fileName, ".S") ||
+		strings.HasSuffix(fileName, ".s")
 }
 
 func isObjCSourceFileName(fileName string) bool {
@@ -163,8 +165,11 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		if arg[0] == '-' {
 			if arg == "-c" {
 				invocation.hascOption = true
-			}
-			if oFile, ok := parseArgFile("-o", arg, &i); ok {
+			} else if oFile, ok := parseArgFile("-o", arg, &i); ok {
+				logClient.Error(oFile)
+				if oFile == "/dev/null" {
+					invocation.invokeType = invokedForLocalCompiling
+				}
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
 			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
@@ -185,7 +190,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
 				if xArg == "c-header" || xArg == "c++-header" || xArg == "objective-c-header" || xArg == "objective-c++-header" {
-					invocation.depsFlags.SetCmdFlagEmitPCH()
+					invocation.invokeType = invokedForCompilingPch
 					invocation.compilerArgs = append(invocation.compilerArgs, arg, xArg)
 					i++
 					continue
@@ -253,18 +258,14 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		invocation.compilerArgs = append(invocation.compilerArgs, arg)
 	}
 
-	if invocation.err != nil {
+	if invocation.err != nil || invocation.invokeType != invokedUnsupported {
 		return
 	}
 
-	if strings.Contains(invocation.objOutFile, "/dev/null") {
-		invocation.invokeType = invokedForLocalCompiling
-	} else if invocation.depsFlags.flagEmitPCH {
-		invocation.invokeType = invokedForCompilingPch
-	} else if invocation.hascOption {
-		if invocation.cppInFile != "" && invocation.objOutFile != "" {
+	if invocation.hascOption && invocation.cppInFile != "" {
+		if invocation.objOutFile != "" {
 			invocation.invokeType = invokedForCompilingCpp
-		} else if invocation.cppInFile != "" && invocation.objOutFile == "" {
+		} else {
 			invocation.invokeType = invokedForLocalCompiling
 		}
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
