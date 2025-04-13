@@ -61,7 +61,7 @@ func sendObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamServe
 
 	err = stream.Send(&pb.RecvCompiledObjChunkReply{
 		SessionID:        session.sessionID,
-		CompilerExitCode: session.compilerExitCode,
+		CompilerExitCode: int32(session.compilerExitCode),
 		CompilerStdout:   session.compilerStdout,
 		CompilerStderr:   session.compilerStderr,
 		CompilerDuration: session.compilerDuration,

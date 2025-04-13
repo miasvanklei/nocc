@@ -2,6 +2,9 @@ package server
 
 import (
 	"fmt"
+	"os"
+	"path"
+	"path/filepath"
 	"sync/atomic"
 
 	"nocc/internal/common"
@@ -33,7 +36,7 @@ type Session struct {
 	objCacheExists     bool
 	compilationStarted atomic.Int32
 
-	compilerExitCode int32
+	compilerExitCode int
 	compilerStdout   []byte
 	compilerStderr   []byte
 	compilerDuration int32
@@ -93,23 +96,23 @@ func (session *Session) StartCompilingObjIfPossible(client *Client, compilerLaun
 	if session.pchFile != nil {
 		go session.StartCompilingPchIfPossible(client, compilerLauncher, objFileCache)
 	} else {
-		go compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
+		go session.LaunchCompilerWhenPossible(client, compilerLauncher, objFileCache)
 	}
 }
 
 func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
 	if session.pchFile.state.Load() == fsFileStatePchCompiled {
 		logServer.Info(1, "pch file already compiled", session.sessionID)
-		compilerLauncher.LaunchCompilerWhenPossible(client, session, objFileCache)
+		session.LaunchCompilerWhenPossible(client, compilerLauncher, objFileCache)
 	} else if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
 		logServer.Info(1, "compiling pch file", session.pchFile.serverFileName)
 
-		err := compilerLauncher.LaunchPchWhenPossible(client, session, objFileCache)
+		err := session.LaunchPchWhenPossible(client, compilerLauncher, objFileCache)
 		if err == nil {
 			session.pchFile.state.Store(fsFileStatePchCompiled)
 			logServer.Error("pch file compiled", session.pchFile.serverFileName)
 		} else {
-			logServer.Error("failed to compile pch file")
+			logServer.Error(err.Error())
 			session.pchFile.state.Store(fsFileStatePchCompileError)
 		}
 
@@ -122,4 +125,67 @@ func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLaun
 		session.compilerExitCode = -1
 		client.PushToClientReadyChannel(session)
 	}
+}
+
+// LaunchCompilerWhenPossible launches the compiler on a server managing a waiting queue.
+// The purpose of a waiting queue is not to over-utilize server resources at peak times.
+// Currently, amount of max parallel processes is an option provided at start up
+// (it other words, it's not dynamic, nocc-server does not try to analyze CPU/memory).
+func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) {
+	if session.compilationStarted.Swap(1) != 0 {
+		return
+	}
+
+	session.OutputFile = objFileCache.GenerateObjOutFileName(client, session)
+	session.compilerArgs = append(session.compilerArgs, "-o", session.OutputFile, session.InputFile)
+
+	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, session.compilerArgs)
+
+	session.compilerExitCode, session.compilerDuration, session.compilerStdout, session.compilerStderr =
+		compilerLauncher.ExecCompiler(client.workingDir, session.compilerCwd, session.compilerName, session.compilerArgs)
+
+	if session.compilerDuration > 30000 {
+		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
+	}
+
+	// save to obj cache (to be safe, only if compiler output is empty)
+	if !session.objCacheKey.IsEmpty() {
+		if session.compilerExitCode == 0 && len(session.compilerStderr) == 0 {
+			if stat, err := os.Stat(session.OutputFile); err == nil {
+				_ = objFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
+			}
+		}
+	}
+
+	client.PushToClientReadyChannel(session)
+}
+
+func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) error {
+	pchInvocation, err := ParsePchFile(session.pchFile)
+	if err != nil {
+		return err
+	}
+
+	var objCacheKey common.SHA256
+	clientOutputFile := client.MapClientFileNameToServerAbs(pchInvocation.OutputFile)
+	objCacheKey = common.SHA256{}
+	objCacheKey.FromLongHexString(pchInvocation.Hash)
+	if pathInObjCache := objFileCache.LookupInCache(objCacheKey); len(pathInObjCache) != 0 {
+		return os.Link(pathInObjCache, clientOutputFile)
+	}
+
+	pchInvocation.Args = append(pchInvocation.Args, "-o", pchInvocation.OutputFile, pchInvocation.InputFile)
+
+	exitCode, _, _, _ := compilerLauncher.ExecCompiler(client.workingDir, pchInvocation.Cwd, pchInvocation.Compiler, pchInvocation.Args)
+
+	if exitCode != 0 {
+		return fmt.Errorf("failed to compile pch file %s", pchInvocation.InputFile)
+	}
+
+	if stat, err := os.Stat(clientOutputFile); err == nil {
+		fileNameInCacheDir := fmt.Sprintf("%s.%s", path.Base(pchInvocation.InputFile), filepath.Ext(pchInvocation.OutputFile))
+		_ = objFileCache.SaveFileToCache(clientOutputFile, fileNameInCacheDir, objCacheKey, stat.Size())
+	}
+
+	return nil
 }
