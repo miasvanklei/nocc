@@ -35,6 +35,7 @@ type Invocation struct {
 	cwd string // working directory, where nocc was launched
 
 	// cmdLine is parsed to the following fields:
+	hascOption bool // -c
 	cppInFile     string       // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile    string       // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	compilerName  string       // g++ / clang / etc.
@@ -161,7 +162,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		}
 		if arg[0] == '-' {
 			if arg == "-c" {
-				invocation.invokeType = invokedForCompilingCpp
+				invocation.hascOption = true
 			}
 			if oFile, ok := parseArgFile("-o", arg, &i); ok {
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
@@ -239,6 +240,12 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
 				return
 			}
+
+			// conftest.* built by autoconf is always done locally
+			if strings.HasPrefix(arg, "conftest") || strings.HasPrefix(arg, "tmp.conftest.") {
+				invocation.invokeType = invokedForLocalCompiling
+			}
+
 			invocation.cppInFile = filepath.Clean(pathAbs(invocation.cwd, arg))
 			continue
 		}
@@ -250,15 +257,18 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		return
 	}
 
-	// conftest.* built by autoconf is always done locally
-	if strings.Contains(invocation.objOutFile, "/dev/null") || strings.HasPrefix(invocation.cppInFile, "conftest") || strings.HasPrefix(invocation.cppInFile, "tmp.conftest.") {
+	if strings.Contains(invocation.objOutFile, "/dev/null") {
 		invocation.invokeType = invokedForLocalCompiling
 	} else if invocation.depsFlags.flagEmitPCH {
 		invocation.invokeType = invokedForCompilingPch
-	} else if invocation.cppInFile != "" && invocation.invokeType == invokedForCompilingCpp {
-		return
-	} else if invocation.objOutFile != "" {
-		invocation.invokeType = invokedForLinking
+	} else if invocation.hascOption {
+		if invocation.cppInFile != "" && invocation.objOutFile != "" {
+			invocation.invokeType = invokedForCompilingCpp
+		} else if invocation.cppInFile != "" && invocation.objOutFile == "" {
+			invocation.invokeType = invokedForLocalCompiling
+		}
+	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
+			invocation.invokeType = invokedForLinking
 	} else {
 		invocation.err = fmt.Errorf("unsupported command-line: no output file specified")
 	}
