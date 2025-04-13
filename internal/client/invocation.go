@@ -166,7 +166,6 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			if arg == "-c" {
 				invocation.hascOption = true
 			} else if oFile, ok := parseArgFile("-o", arg, &i); ok {
-				logClient.Error(oFile)
 				if oFile == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
