@@ -7,6 +7,6 @@ var logServer *common.LoggerWrapper
 
 func MakeLoggerServer(logFile string, verbosity int) error {
 	var err error
-	logServer, err = common.MakeLogger(logFile, verbosity, false)
+	logServer, err = common.MakeLogger(logFile, verbosity)
 	return err
 }

@@ -7,6 +7,6 @@ var logClient *common.LoggerWrapper
 
 func MakeLoggerClient(configuration *Configuration) error {
 	var err error
-	logClient, err = common.MakeLogger(configuration.LogFileName, configuration.LogLevel, true)
+	logClient, err = common.MakeLogger(configuration.LogFileName, configuration.LogLevel)
 	return err
 }
