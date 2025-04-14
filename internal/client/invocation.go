@@ -168,6 +168,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.hascOption = true
 				continue
 			} else if oFile, ok := parseArgFile("-o", arg, &i); ok {
+				logClient.Error("output file", oFile)
 				if oFile == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
@@ -264,7 +265,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	}
 
 	if invocation.hascOption && invocation.cppInFile != "" {
-		if invocation.objOutFile != "" {
+		if invocation.objOutFile == "" {
 			invocation.objOutFile = common.ReplaceFileExt(invocation.cppInFile, ".o")
 		}
 		invocation.invokeType = invokedForCompilingCpp
