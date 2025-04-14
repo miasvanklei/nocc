@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"math/rand"
+	"nocc/internal/common"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -264,10 +265,9 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 
 	if invocation.hascOption && invocation.cppInFile != "" {
 		if invocation.objOutFile != "" {
-			invocation.invokeType = invokedForCompilingCpp
-		} else {
-			invocation.invokeType = invokedForLocalCompiling
+			invocation.objOutFile = common.ReplaceFileExt(invocation.cppInFile, ".o")
 		}
+		invocation.invokeType = invokedForCompilingCpp
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
 			invocation.invokeType = invokedForLinking
 	} else {
