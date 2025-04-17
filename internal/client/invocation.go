@@ -189,7 +189,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-include-pch", pathAbs(invocation.cwd, iFile))
 				continue
 			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-include", pathAbs(invocation.cwd, iFile))
+				invocation.compilerArgs = append(invocation.compilerArgs, "-include", iFile)
 				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
