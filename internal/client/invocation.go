@@ -250,8 +250,11 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				return
 			}
 
-			// conftest.* built by autoconf is always done locally
-			if strings.HasPrefix(arg, "conftest") || strings.HasPrefix(arg, "tmp.conftest.") {
+			// Best effort for compiling configure tests locally
+			// We check for cmake and autoconf tests
+			if strings.Contains(invocation.cwd, "TryCompile-") {
+				invocation.invokeType = invokedForLocalCompiling
+			} else if strings.HasPrefix(arg, "conftest") || strings.HasPrefix(arg, "tmp.conftest.") {
 				invocation.invokeType = invokedForLocalCompiling
 			}
 
