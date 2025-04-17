@@ -106,10 +106,13 @@ func isHeaderFileName(fileName string) bool {
 }
 
 func pathAbs(cwd string, relPath string) string {
+	var absPath string
 	if relPath[0] == '/' {
-		return relPath
+		absPath = relPath
+	} else {
+		absPath = filepath.Join(cwd, relPath)
 	}
-	return filepath.Join(cwd, relPath)
+	return filepath.Clean(absPath)
 }
 
 func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
@@ -252,7 +255,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.invokeType = invokedForLocalCompiling
 			}
 
-			invocation.cppInFile = filepath.Clean(pathAbs(invocation.cwd, arg))
+			invocation.cppInFile = pathAbs(invocation.cwd, arg)
 			continue
 		}
 
