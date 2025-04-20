@@ -6,3 +6,4 @@ SrcCacheDir = "/tmp/nocc/cpp"
 ObjCacheDir = "/tmp/nocc/obj"
 SrcCacheSize = 1073741824
 ObjCacheSize = 1073741824
+CompilerDirs = ["/usr/lib/llvm/20/bin", "/usr/lib/llvm/20/lib", "/usr/lib/clang/20/lib"]
