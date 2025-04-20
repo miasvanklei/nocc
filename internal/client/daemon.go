@@ -213,7 +213,6 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 
 	pchinvocation := common.PCHInvocation{
 		Hash:       sha256PCH.ToLongHexString(),
-		Cwd:        req.Cwd,
 		Compiler:   req.Compiler,
 		InputFile:  invocation.cppInFile,
 		OutputFile: invocation.objOutFile,

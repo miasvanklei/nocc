@@ -36,13 +36,12 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int, objCacheDir string) 
 	}, nil
 }
 
-func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerCwd string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
+func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
 	command := "proot"
 	prootarguments := make([]string, 0, len(compilerLauncher.prootMappedDirs)+9+len(compilerArgs))
 
 	prootarguments = append(prootarguments, "-R", workingDir)
-	prootarguments = append(prootarguments, "-w", compilerCwd)
 	prootarguments = append(prootarguments, compilerLauncher.prootMappedDirs...)
 	prootarguments = append(prootarguments, compilerName)
 	prootarguments = append(prootarguments, compilerArgs...)
@@ -72,7 +71,6 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compil
 	if compilerExitCode != 0 {
 		logServer.Error(
 			"The compiler exited with code", compilerExitCode,
-			"\ncompilerCwd:", compilerCwd,
 			"\ncmdLine:", compilerName, compilerArgs,
 			"\ncompilerStdout:", strings.TrimSpace(string(compilerStdout)),
 			"\ncxxStderr:", strings.TrimSpace(string(compilerStderr)))

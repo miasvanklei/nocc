@@ -25,7 +25,6 @@ type Session struct {
 
 	InputFile     string // as-is from a client cmd line (relative to compilerCwd on a server-side)
 	OutputFile    string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
-	compilerCwd   string // cwd for the compiler on a server-side (= client.workingDir + clientCwd)
 	compilerName  string // g++ / clang / etc.
 	compilerArgs  []string // all args for the compiler, including -I/-isystem/-L
 
@@ -48,7 +47,6 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 		files:         make([]*fileInClientDir, len(in.RequiredFiles)),
 		compilerName:  in.Compiler,
 		InputFile:     in.InputFile,
-		compilerCwd:   in.Cwd,
 		compilerArgs:  in.CompilerArgs,
 	}
 
@@ -141,7 +139,7 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, session.compilerArgs)
 
 	session.compilerExitCode, session.compilerDuration, session.compilerStdout, session.compilerStderr =
-		compilerLauncher.ExecCompiler(client.workingDir, session.compilerCwd, session.compilerName, session.InputFile, session.OutputFile, session.compilerArgs)
+		compilerLauncher.ExecCompiler(client.workingDir, session.compilerName, session.InputFile, session.OutputFile, session.compilerArgs)
 
 	if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
@@ -173,7 +171,7 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 		return os.Link(pathInObjCache, clientOutputFile)
 	}
 
-	exitCode, _, _, _ := compilerLauncher.ExecCompiler(client.workingDir, pchInvocation.Cwd, pchInvocation.Compiler, pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args)
+	exitCode, _, _, _ := compilerLauncher.ExecCompiler(client.workingDir, pchInvocation.Compiler, pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args)
 
 	if exitCode != 0 {
 		return fmt.Errorf("failed to compile pch file %s", pchInvocation.InputFile)

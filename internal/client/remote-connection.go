@@ -84,7 +84,6 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 		&pb.StartCompilationSessionRequest{
 			ClientID:        remote.clientID,
 			SessionID:       invocation.sessionID,
-			Cwd:             invocation.cwd,
 			InputFile:       invocation.cppInFile,
 			Compiler:        invocation.compilerName,
 			CompilerArgs:    invocation.compilerArgs,
