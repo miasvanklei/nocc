@@ -29,14 +29,14 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, 
 func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
 	command := "chroot"
-	prootarguments := make([]string, 0, 6+len(compilerArgs))
+	chrootarguments := make([]string, 0, 6+len(compilerArgs))
 
-	prootarguments = append(prootarguments, workingDir)
-	prootarguments = append(prootarguments, compilerName)
-	prootarguments = append(prootarguments, compilerArgs...)
-	prootarguments = append(prootarguments, "-o", compileOutput, "-c", compileInput)
+	chrootarguments = append(chrootarguments, workingDir)
+	chrootarguments = append(chrootarguments, compilerName)
+	chrootarguments = append(chrootarguments, compilerArgs...)
+	chrootarguments = append(chrootarguments, "-o", compileOutput, "-c", compileInput)
 
-	compilerCommand := exec.Command(command, prootarguments...)
+	compilerCommand := exec.Command(command, chrootarguments...)
 	compilerCommand.Stderr = &compilerStderrBuffer
 	compilerCommand.Stdout = &compilerStdoutBuffer
 
