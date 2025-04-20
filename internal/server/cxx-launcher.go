@@ -28,10 +28,10 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, 
 
 func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
-	command := "proot"
-	prootarguments := make([]string, 0, 9+len(compilerArgs))
+	command := "chroot"
+	prootarguments := make([]string, 0, 6+len(compilerArgs))
 
-	prootarguments = append(prootarguments, "-R", workingDir)
+	prootarguments = append(prootarguments, workingDir)
 	prootarguments = append(prootarguments, compilerName)
 	prootarguments = append(prootarguments, compilerArgs...)
 	prootarguments = append(prootarguments, "-o", compileOutput, "-c", compileInput)
