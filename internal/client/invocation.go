@@ -36,12 +36,12 @@ type Invocation struct {
 	cwd string // working directory, where nocc was launched
 
 	// cmdLine is parsed to the following fields:
-	hascOption bool // -c
-	cppInFile     string       // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
-	objOutFile    string       // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
-	compilerName  string       // g++ / clang / etc.
-	compilerArgs  []string     // args like -Wall, -fpch-preprocess, -I{dir} and many more
-	depsFlags     DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
+	hascOption   bool        // -c
+	cppInFile    string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
+	objOutFile   string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
+	compilerName string      // g++ / clang / etc.
+	compilerArgs []string    // args like -Wall, -fpch-preprocess, -I{dir} and many more
+	depsFlags    DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
 	doneRecv    atomic.Int32 // 1 if o file received or failed receiving; 1 releases wgRecv; see Invocation.DoneRecvObj
@@ -147,7 +147,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		return ""
 	}
 
-	parsePreprocessorArg := func (args []string, argIndex *int) bool {
+	parsePreprocessorArg := func(args []string, argIndex *int) bool {
 		if mfFile := parseArgStr(args, "-MD", argIndex); mfFile != "" {
 			invocation.depsFlags.SetCmdFlagMD()
 			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
@@ -251,12 +251,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			}
 
 			// Best effort for compiling configure tests locally
-			// We check for cmake and autoconf tests
-			if strings.Contains(invocation.cwd, "TryCompile-") {
-				invocation.invokeType = invokedForLocalCompiling
-			} else if strings.HasPrefix(arg, "conftest") || strings.HasPrefix(arg, "tmp.conftest.") {
-				invocation.invokeType = invokedForLocalCompiling
-			}
+			determineLocalCompiling(invocation, arg)
 
 			invocation.cppInFile = pathAbs(invocation.cwd, arg)
 			continue
@@ -275,22 +270,36 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 		}
 		invocation.invokeType = invokedForCompilingCpp
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
-			invocation.invokeType = invokedForLinking
+		invocation.invokeType = invokedForLinking
 	} else {
 		invocation.err = fmt.Errorf("unsupported command-line: no output file specified")
 	}
 }
 
+func determineLocalCompiling(invocation *Invocation, arg string) {
+	shouldCompileLocally :=
+		strings.Contains(invocation.cwd, "TryCompile-") || // cmake
+			strings.Contains(invocation.cwd, "meson-private") || // meson
+			strings.Contains(invocation.cwd, ".conf_check") || // waf
+			strings.HasPrefix(arg, "cgo-gcc-input") || // go
+			strings.HasPrefix(arg, "conftest") || // autoconf
+			strings.HasPrefix(arg, "tmp.conftest.") // autoconf
+
+	if shouldCompileLocally {
+		invocation.invokeType = invokedForLocalCompiling
+	}
+}
+
 func CreateInvocation(req DaemonSockRequest) *Invocation {
 	invocation := &Invocation{
-		uid:           req.Uid,
-		gid:           req.Gid,
-		createTime:    time.Now(),
-		sessionID:     req.SessionId,
-		cwd:           req.Cwd,
-		compilerName:  req.Compiler,
-		compilerArgs:  make([]string, 0, len(req.CmdLine)),
-		summary:       MakeInvocationSummary(),
+		uid:          req.Uid,
+		gid:          req.Gid,
+		createTime:   time.Now(),
+		sessionID:    req.SessionId,
+		cwd:          req.Cwd,
+		compilerName: req.Compiler,
+		compilerArgs: make([]string, 0, len(req.CmdLine)),
+		summary:      MakeInvocationSummary(),
 	}
 
 	return invocation
