@@ -69,12 +69,12 @@ func main() {
 
 	s := &server.NoccServer{}
 
-	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(configuration.SrcCacheDir, "clients"))
+	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(configuration.SrcCacheDir, "clients"), configuration.CompilerDirs, configuration.ObjCacheDir)
 	if err != nil {
 		failedStart("Failed to init clients hashtable", err)
 	}
 
-	s.CompilerLauncher, err = server.MakeCompilerLauncher(configuration.CompilerQueueSize, configuration.ObjCacheDir)
+	s.CompilerLauncher, err = server.MakeCompilerLauncher(configuration.CompilerQueueSize)
 	if err != nil {
 		failedStart("Failed to init compiler launcher", err)
 	}

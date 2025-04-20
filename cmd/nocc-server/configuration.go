@@ -8,13 +8,14 @@ import (
 
 type Configuration struct {
 	ListenAddr        string
-	CompilerQueueSize int   
-	LogFileName       string 
-	LogLevel          int   
+	CompilerQueueSize int
+	LogFileName       string
+	LogLevel          int
 	SrcCacheDir       string
-	ObjCacheDir       string 
-	SrcCacheSize      int64  
-	ObjCacheSize      int64  
+	ObjCacheDir       string
+	SrcCacheSize      int64
+	ObjCacheSize      int64
+	CompilerDirs      []string
 }
 
 func ParseConfiguration(filePath string) (*Configuration, error) {

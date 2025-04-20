@@ -8,24 +8,37 @@ import (
 	"time"
 )
 
+// defaultMappedFolders are folders that are bind-mounted to a client working directory.
+// They are read-only, so a client can't modify them.
+// We assume that /bin and /lib are symlinked to /usr/bin and /usr/lib, respectively
+var defaultMappedFolders = []string{
+	"/lib",
+	"/bin",
+	"/etc",
+}
+
 // ClientsStorage contains all active clients connected to this server.
 // After a client is not active for some time, it's deleted (and its working directory is removed from a hard disk).
 type ClientsStorage struct {
 	table map[string]*Client
 	mu    sync.RWMutex
 
+	       romountDirs RoMountFolders
+       rwmountDirs RwMountFolders
 	clientsDir string // /tmp/nocc/cpp/clients
 
-	lastPurgeTime  time.Time
+	lastPurgeTime time.Time
 
 	uniqueRemotesList map[string]string
 }
 
-func MakeClientsStorage(clientsDir string) (*ClientsStorage, error) {
+func MakeClientsStorage(clientsDir string, compilerDirs[] string, objcacheDir string) (*ClientsStorage, error) {
 	return &ClientsStorage{
 		table:             make(map[string]*Client, 1024),
 		clientsDir:        clientsDir,
 		uniqueRemotesList: make(map[string]string, 1),
+		romountDirs:       makeRoMountDirs(append(defaultMappedFolders, compilerDirs...)...),
+		rwmountDirs:       makeRwMountDirs(objcacheDir),
 	}, nil
 }
 
@@ -55,6 +68,13 @@ func (allClients *ClientsStorage) OnClientConnected(clientID string) (*Client, e
 		return nil, fmt.Errorf("can't create client working directory: %v", err)
 	}
 
+	if err := bindmountFolders(workingDir, allClients.romountDirs.MountFolders); err != nil {
+		return nil, err
+	}
+	if err := bindmountFolders(workingDir, allClients.rwmountDirs.MountFolders); err != nil {
+		return nil, err
+	}
+
 	client = &Client{
 		clientID:          clientID,
 		workingDir:        workingDir,
@@ -76,6 +96,10 @@ func (allClients *ClientsStorage) DeleteClient(client *Client) {
 	allClients.mu.Lock()
 	delete(allClients.table, client.clientID)
 	allClients.mu.Unlock()
+
+	workingDir := path.Join(allClients.clientsDir, client.clientID)
+	unmountFolders(workingDir, allClients.romountDirs.MountFolders)
+	unmountFolders(workingDir, allClients.rwmountDirs.MountFolders)
 
 	close(client.chanDisconnected)
 	// don't close chanReadySessions intentionally, it's not a leak
