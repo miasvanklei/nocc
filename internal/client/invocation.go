@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"nocc/internal/common"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -266,7 +267,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 
 	if invocation.hascOption && invocation.cppInFile != "" {
 		if invocation.objOutFile == "" {
-			invocation.objOutFile = common.ReplaceFileExt(invocation.cppInFile, ".o")
+			outputFilename := common.ReplaceFileExt(path.Base(invocation.cppInFile), ".o")
+			invocation.objOutFile = filepath.Join(invocation.cwd, outputFilename)
 		}
 		invocation.invokeType = invokedForCompilingCpp
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
@@ -279,11 +281,11 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 func determineLocalCompiling(invocation *Invocation, arg string) {
 	shouldCompileLocally :=
 		strings.Contains(invocation.cwd, "TryCompile-") || // cmake
-			strings.Contains(invocation.cwd, "meson-private") || // meson
-			strings.Contains(invocation.cwd, ".conf_check") || // waf
-			strings.HasPrefix(arg, "cgo-gcc-input") || // go
-			strings.HasPrefix(arg, "conftest") || // autoconf
-			strings.HasPrefix(arg, "tmp.conftest.") // autoconf
+		strings.Contains(invocation.cwd, "meson-private") || // meson
+		strings.Contains(invocation.cwd, ".conf_check") || // waf
+		strings.HasPrefix(arg, "cgo-gcc-input") || // go
+		strings.HasPrefix(arg, "conftest") || // autoconf
+		strings.HasPrefix(arg, "tmp.conftest.") // autoconf
 
 	if shouldCompileLocally {
 		invocation.invokeType = invokedForLocalCompiling
