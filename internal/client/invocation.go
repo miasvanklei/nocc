@@ -200,7 +200,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 					i++
 					continue
 				}
-			} else if arg == "-I-" || arg == "-E" || strings.HasPrefix(arg, "-iprefix") || strings.HasPrefix(arg, "-idirafter") || strings.HasPrefix(arg, "--sysroot") {
+			} else if arg == "-I-" || arg == "-E" {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
 			} else if mfFile := parseArgStr(cmdLine, "-MF", &i); mfFile != "" {
