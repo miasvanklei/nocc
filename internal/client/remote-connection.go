@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"nocc/internal/common"
 	"nocc/pb"
@@ -17,7 +18,7 @@ import (
 type RemoteConnection struct {
 	remoteHostPort string
 	remoteHost     string // for console output and logs, just IP is more pretty
-	isUnavailable  bool
+	isUnavailable  atomic.Bool
 
 	grpcClient     *GRPCClient
 	filesUploading *FilesUploading
@@ -75,7 +76,7 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 // As an input, we send metadata about all dependencies needed for a .cpp to be compiled (.h/.nocc-pch/etc.).
 // As an output, the remote responds with files that are missing and needed to be uploaded.
 func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, requiredFiles []*pb.FileMetadata, requiredPchFile *pb.FileMetadata) ([]uint32, error) {
-	if remote.isUnavailable {
+	if remote.isUnavailable.Load() {
 		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
 	}
 
@@ -123,7 +124,7 @@ func (remote *RemoteConnection) WaitForCompiledObj(invocation *Invocation) (exit
 }
 
 func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) {
-	if remote.isUnavailable {
+	if remote.isUnavailable.Load() {
 		return
 	}
 	_, _ = remote.grpcClient.pb.StopClient(

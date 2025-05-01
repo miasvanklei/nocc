@@ -104,7 +104,7 @@ func (daemon *Daemon) ConnectToRemoteHosts() {
 		go func(index int, remoteHostPort string) {
 			remote, err := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr, ctxConnect)
 			if err != nil {
-				remote.isUnavailable = true
+				remote.isUnavailable.Store(true)
 				logClient.Error("error connecting to", remoteHostPort, err)
 			}
 
@@ -154,8 +154,7 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 
 func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason error) {
 	for _, remote := range daemon.remoteConnections {
-		if remote.remoteHostPort == remoteHostPost && !remote.isUnavailable {
-			remote.isUnavailable = true
+		if remote.remoteHostPort == remoteHostPost && !remote.isUnavailable.Swap(true) {
 			logClient.Error("remote", remoteHostPost, "became unavailable:", reason)
 		}
 	}
@@ -234,7 +233,7 @@ func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonS
 
 	invocation.summary.remoteHost = remote.remoteHost
 
-	if remote.isUnavailable {
+	if remote.isUnavailable.Load() {
 		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
 	}
 
