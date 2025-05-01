@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	"nocc/pb"
-
 	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,7 +15,6 @@ type GRPCClient struct {
 	connection     *grpc.ClientConn
 	callContext    context.Context
 	cancelFunc     context.CancelFunc
-	pb             pb.CompilationServiceClient
 }
 
 func MakeGRPCClient(remoteHostPort string, socksProxyAddr string) (*GRPCClient, error) {
@@ -49,7 +46,6 @@ func MakeGRPCClient(remoteHostPort string, socksProxyAddr string) (*GRPCClient, 
 		connection:     connection,
 		callContext:    ctx,
 		cancelFunc:     cancelFunc,
-		pb:             pb.NewCompilationServiceClient(connection),
 	}, nil
 }
 
@@ -89,6 +85,5 @@ func (grpcClient *GRPCClient) Clear() {
 		grpcClient.connection = nil
 		grpcClient.callContext = nil
 		grpcClient.cancelFunc = nil
-		grpcClient.pb = nil
 	}
 }

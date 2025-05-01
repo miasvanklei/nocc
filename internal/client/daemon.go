@@ -97,16 +97,16 @@ func (daemon *Daemon) ConnectToRemoteHosts() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(daemon.remoteNoccHosts))
 
-	ctxConnect, cancelFunc := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-	defer cancelFunc()
-
 	for index, remoteHostPort := range daemon.remoteNoccHosts {
 		go func(index int, remoteHostPort string) {
-			remote, err := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr, ctxConnect)
+			remote, err := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr)
 			if err != nil {
 				remote.isUnavailable.Store(true)
 				logClient.Error("error connecting to", remoteHostPort, err)
 			}
+
+			remote.StartClientRequest()
+			remote.StartFileMonitoring(daemon)
 
 			daemon.remoteConnections[index] = remote
 			wg.Done()
@@ -150,14 +150,6 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 		invocation.ForceInterrupt(fmt.Errorf("daemon quit: %v", reason))
 	}
 	daemon.mu.Unlock()
-}
-
-func (daemon *Daemon) OnRemoteBecameUnavailable(remoteHostPost string, reason error) {
-	for _, remote := range daemon.remoteConnections {
-		if remote.remoteHostPort == remoteHostPost && !remote.isUnavailable.Swap(true) {
-			logClient.Error("remote", remoteHostPost, "became unavailable:", reason)
-		}
-	}
 }
 
 func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) *DaemonSockResponse {

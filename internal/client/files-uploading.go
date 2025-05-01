@@ -13,106 +13,79 @@ import (
 )
 
 type fileUploadReq struct {
+	clientID   string
 	invocation *Invocation
 	file       *pb.FileMetadata
 	fileIndex  uint32
 }
 
-// FilesUploading is a singleton inside Daemon that holds a bunch of grpc streams to upload .cpp/.h files.
-// Very similar to FilesReceiving.
-type FilesUploading struct {
-	daemon       *Daemon
-	grpcClient   *GRPCClient
-	chanToUpload chan fileUploadReq
-}
-
-func MakeFilesUploading(daemon *Daemon, grpcClient *GRPCClient) *FilesUploading {
-	return &FilesUploading{
-		daemon:       daemon,
-		grpcClient:   grpcClient,
-		chanToUpload: make(chan fileUploadReq, 50),
-	}
-}
-
-func (fu *FilesUploading) CreateUploadStream() error {
+func (rc *RemoteConnection) CreateUploadStream() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	stream, err := fu.grpcClient.pb.UploadFileStream(ctx)
+	defer cancelFunc()
+
+	stream, err :=  rc.compilationServiceClient.UploadFileStream(ctx)
 	if err != nil {
-		cancelFunc()
-		return err
+		rc.OnRemoteBecameUnavailable(err)
+		return
 	}
 
-	go fu.monitorClientChanForFileUploading(stream, cancelFunc)
-	return nil
-}
+	invocation, err := rc.monitorClientChanForFileUploading(stream)
+	if err != nil {
+		// when a daemon stops listening, all streams are automatically closed
+		select {
+		case <-rc.quitDaemonChan:
+			return
+		default:
+			break
+		}
 
-func (fu *FilesUploading) RecreateUploadStreamOrQuit(failedStreamCancelFunc context.CancelFunc, err error) {
-	failedStreamCancelFunc()
-	logClient.Error("recreate upload stream:", err)
-	time.Sleep(100 * time.Millisecond)
+		// if something goes completely wrong and stream recreation fails, mark this remote as unavailable
+		// see FilesReceiving for a comment about this error code
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unauthenticated {
+				rc.OnRemoteBecameUnavailable(err)
+				return
+			}
+		}
 
-	if err := fu.CreateUploadStream(); err != nil {
-		fu.daemon.OnRemoteBecameUnavailable(fu.grpcClient.remoteHostPort, err)
-	}
-}
+		// if some error occurred, the stream could be left in the middle of uploading
+		// the easiest solution is to close this stream and to reopen a new one
+		// if the server became inaccessible, recreation would fail
+		logClient.Error("recreate upload stream:", err)
+		time.Sleep(100 * time.Millisecond)
 
-func (fu *FilesUploading) StartUploadingFileToRemote(invocation *Invocation, file *pb.FileMetadata, fileIndex uint32) {
-	fu.chanToUpload <- fileUploadReq{
-		invocation: invocation,
-		file:       file,
-		fileIndex:  fileIndex,
+		go rc.CreateUploadStream()
+
+		// theoretically, we could implement retries: if something does wrong with the network,
+		// then retry uploading (by pushing req to fu.chanToUpload)
+		// to do this correctly, we need to distinguish network errors vs file errors (and don't retry then)
+		// for now, there are no retries: if something fails, this invocation will be executed locally
+		invocation.DoneUploadFile(err)
 	}
 }
 
 // monitorClientChanForFileUploading listens to chanToUpload and uploads it via stream.
 // One grpc stream is used to upload multiple files consecutively.
-func (fu *FilesUploading) monitorClientChanForFileUploading(stream pb.CompilationService_UploadFileStreamClient, cancelFunc context.CancelFunc) {
+func (rc *RemoteConnection) monitorClientChanForFileUploading(stream pb.CompilationService_UploadFileStreamClient) (*Invocation, error) {
 	chunkBuf := make([]byte, 64*1024) // reusable chunk for file reading, exists until stream close
 
 	for {
 		select {
-		case <-fu.daemon.quitDaemonChan:
-			return
+		case <-rc.quitDaemonChan:
+			return nil, nil
 
-		case req := <-fu.chanToUpload:
+		case req := <-rc.chanToUpload:
 			logClient.Info(2, "start uploading", req.file.FileSize, req.file.FileName)
 			if req.file.FileSize > 64*1024 {
 				logClient.Info(1, "upload large file", req.file.FileSize, req.file.FileName)
 			}
 
 			invocation := req.invocation
-			err := uploadFileByChunks(stream, chunkBuf, req.file.FileName, fu.daemon.clientID, invocation.sessionID, req.fileIndex)
+			err := uploadFileByChunks(stream, chunkBuf, req.file.FileName, req.clientID, invocation.sessionID, req.fileIndex)
 
 			// such complexity of error handling prevents hanging sessions and proper stream recreation
 			if err != nil {
-				// when a daemon stops listening, all streams are automatically closed
-				select {
-				case <-fu.daemon.quitDaemonChan:
-					return
-				default:
-					break
-				}
-
-				// if something goes completely wrong and stream recreation fails, mark this remote as unavailable
-				// see FilesReceiving for a comment about this error code
-				if st, ok := status.FromError(err); ok {
-					if st.Code() == codes.Unauthenticated {
-						fu.daemon.OnRemoteBecameUnavailable(fu.grpcClient.remoteHostPort, err)
-						return
-					}
-				}
-
-				// if some error occurred, the stream could be left in the middle of uploading
-				// the easiest solution is to close this stream and to reopen a new one
-				// if the server became inaccessible, recreation would fail
-				fu.RecreateUploadStreamOrQuit(cancelFunc, err)
-
-				// theoretically, we could implement retries: if something does wrong with the network,
-				// then retry uploading (by pushing req to fu.chanToUpload)
-				// to do this correctly, we need to distinguish network errors vs file errors (and don't retry then)
-				// for now, there are no retries: if something fails, this invocation will be executed locally
-				invocation.DoneUploadFile(err)
-				return
+				return invocation, err
 			}
 
 			invocation.summary.nFilesSent++

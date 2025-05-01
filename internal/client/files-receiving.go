@@ -13,43 +13,63 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// FilesReceiving is a singleton inside Daemon that holds a bunch of grpc streams to receive compiled .o files.
-// The number of streams is limited, they all are initialized on daemon start.
-// When another .o is ready, it's pushed by the server (a client only receives, it doesn't send anything back).
-type FilesReceiving struct {
-	daemon     *Daemon
-	grpcClient *GRPCClient
-}
-
-func MakeFilesReceiving(daemon *Daemon, grpcClient *GRPCClient) *FilesReceiving {
-	return &FilesReceiving{
-		daemon:     daemon,
-		grpcClient: grpcClient,
-	}
-}
-
-func (fr *FilesReceiving) CreateReceiveStream() error {
+func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Invocation) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	stream, err := fr.grpcClient.pb.RecvCompiledObjStream(ctx,
-		&pb.OpenReceiveStreamRequest{ClientID: fr.daemon.clientID},
+	defer cancelFunc()
+
+	stream, err := rc.compilationServiceClient.RecvCompiledObjStream(ctx,
+		&pb.OpenReceiveStreamRequest{ClientID: rc.clientID},
 	)
 	if err != nil {
-		cancelFunc()
-		return err
+		rc.OnRemoteBecameUnavailable(err)
+		return
 	}
 
-	go fr.monitorRemoteStreamForObjReceiving(stream, cancelFunc)
-	return nil
-}
+	needRecreateStream, err := rc.monitorRemoteStreamForObjReceiving(stream, findInvocation)
 
-func (fr *FilesReceiving) RecreateReceiveStreamOrQuit(failedStreamCancelFunc context.CancelFunc, err error) {
-	failedStreamCancelFunc() // will close the stream on the server also
+	if err == nil {
+		return
+	}
+
+	if !needRecreateStream {
+		// when a daemon stops listening, all streams are automatically closed
+		select {
+		case <-rc.quitDaemonChan:
+			return
+		default:
+			break
+		}
+
+		// grpc stream creation doesn't wait for ack, that's why
+		// if a stream couldn't be created at all, we know this only on Recv() failure
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unauthenticated {
+				rc.OnRemoteBecameUnavailable(err)
+				return
+			}
+		}
+
+		// if something weird occurs, the server fails to send a chunk to a stream
+		// it closes the stream and includes metadata to trailer
+		// here, on the client size, we mark this invocation as errored, they'll be compiled locally
+		// this prevents invocations from hanging — at least when a network works as expected
+		mdSession := stream.Trailer().Get("sessionID")
+		if len(mdSession) == 1 {
+			sessionID, _ := strconv.Atoi(mdSession[0])
+			invocation := findInvocation(uint32(sessionID))
+			if invocation != nil {
+				invocation.DoneRecvObj(err)
+			}
+		}
+	}
+
+	// NB: there are rpc errors that are not visible to the server-side (like codes.ResourceExhausted)
+	// in this case, the server thinks that .o was sent, but the client gets an error without metadata
+	// such invocations will be cleared later, see PeriodicallyInterruptHangedInvocations()
 	logClient.Error("recreate recv stream:", err)
 	time.Sleep(100 * time.Millisecond)
 
-	if err := fr.CreateReceiveStream(); err != nil {
-		fr.daemon.OnRemoteBecameUnavailable(fr.grpcClient.remoteHostPort, err)
-	}
+	go rc.CreateReceiveStream(findInvocation)
 }
 
 // monitorRemoteStreamForObjReceiving listens to a grpc receiving stream and handles .o files sent by a remote.
@@ -57,50 +77,16 @@ func (fr *FilesReceiving) RecreateReceiveStreamOrQuit(failedStreamCancelFunc con
 // One stream is used to receive multiple .o files consecutively.
 // If compilation exits with non-zero code, the same stream is used to send error details.
 // See RemoteConnection.WaitForCompiledObj.
-func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.CompilationService_RecvCompiledObjStreamClient, cancelFunc context.CancelFunc) {
+func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.CompilationService_RecvCompiledObjStreamClient, findInvocation func(uint32) *Invocation) (bool, error) {
 	for {
 		firstChunk, err := stream.Recv()
 
 		// such complexity of error handling prevents hanging sessions and proper stream recreation
 		if err != nil {
-			// when a daemon stops listening, all streams are automatically closed
-			select {
-			case <-fr.daemon.quitDaemonChan:
-				return
-			default:
-				break
-			}
-
-			// grpc stream creation doesn't wait for ack, that's why
-			// if a stream couldn't be created at all, we know this only on Recv() failure
-			if st, ok := status.FromError(err); ok {
-				if st.Code() == codes.Unauthenticated {
-					fr.daemon.OnRemoteBecameUnavailable(fr.grpcClient.remoteHostPort, err)
-					return
-				}
-			}
-
-			// if something weird occurs, the server fails to send a chunk to a stream
-			// it closes the stream and includes metadata to trailer
-			// here, on the client size, we mark this invocation as errored, they'll be compiled locally
-			// this prevents invocations from hanging — at least when a network works as expected
-			mdSession := stream.Trailer().Get("sessionID")
-			if len(mdSession) == 1 {
-				sessionID, _ := strconv.Atoi(mdSession[0])
-				invocation := fr.daemon.FindInvocationBySessionID(uint32(sessionID))
-				if invocation != nil {
-					invocation.DoneRecvObj(err)
-				}
-			}
-
-			// NB: there are rpc errors that are not visible to the server-side (like codes.ResourceExhausted)
-			// in this case, the server thinks that .o was sent, but the client gets an error without metadata
-			// such invocations will be cleared later, see PeriodicallyInterruptHangedInvocations()
-			fr.RecreateReceiveStreamOrQuit(cancelFunc, err)
-			return
+			return false, err
 		}
 
-		invocation := fr.daemon.FindInvocationBySessionID(firstChunk.SessionID)
+		invocation := findInvocation(firstChunk.SessionID)
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
 			continue
@@ -112,7 +98,7 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		invocation.compilerDuration = firstChunk.CompilerDuration
 		invocation.summary.nBytesReceived += int(firstChunk.FileSize)
 
-		// non-zero exitCode means a bug in cpp source code and doesn't require local fallback
+		// non-zero exitCode means either a bug in the source code or a compiler errror
 		if firstChunk.CompilerExitCode != 0 {
 			invocation.DoneRecvObj(nil)
 			continue
@@ -121,11 +107,8 @@ func (fr *FilesReceiving) monitorRemoteStreamForObjReceiving(stream pb.Compilati
 		err, needRecreateStream := receiveObjFileByChunks(stream, invocation, int(firstChunk.FileSize))
 		invocation.DoneRecvObj(err)
 
-		// recreate a stream if it's corrupted, like chunks mismatch
-		// (if so, invocation won't be left hanged, as it's already errored)
-		if err != nil && needRecreateStream {
-			fr.RecreateReceiveStreamOrQuit(cancelFunc, err)
-			return
+		if err != nil {
+			return needRecreateStream, err
 		}
 
 		// continue waiting for next .o files pushed by the remote over the same stream
@@ -160,7 +143,7 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 	if fileTmp != nil {
 		_ = fileTmp.Close()
 		if errWrite == nil {
-			errWrite = os.Rename(fileTmp.Name(),invocation.objOutFile)
+			errWrite = os.Rename(fileTmp.Name(), invocation.objOutFile)
 		}
 		_ = os.Remove(fileTmp.Name())
 	}

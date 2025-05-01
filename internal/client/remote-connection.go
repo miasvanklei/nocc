@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"nocc/internal/common"
 	"nocc/pb"
@@ -16,13 +17,15 @@ import (
 // If a remote is not available on daemon start (on becomes unavailable in the middle),
 // then all invocations that should be sent to that remote are executed locally within a daemon.
 type RemoteConnection struct {
+	chanToUpload   chan fileUploadReq
+	quitDaemonChan chan int
+
 	remoteHostPort string
 	remoteHost     string // for console output and logs, just IP is more pretty
 	isUnavailable  atomic.Bool
 
-	grpcClient     *GRPCClient
-	filesUploading *FilesUploading
-	filesReceiving *FilesReceiving
+	grpcClient               *GRPCClient
+	compilationServiceClient pb.CompilationServiceClient
 
 	clientID     string // = Daemon.clientID
 	hostUserName string // = Daemon.hostUserName
@@ -36,39 +39,45 @@ func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
 	return
 }
 
-func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string, ctxWithTimeout context.Context) (*RemoteConnection, error) {
+func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string) (*RemoteConnection, error) {
 	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 
 	remote := &RemoteConnection{
-		remoteHostPort: remoteHostPort,
-		remoteHost:     ExtractRemoteHostWithoutPort(remoteHostPort),
-		grpcClient:     grpcClient,
-		filesUploading: MakeFilesUploading(daemon, grpcClient),
-		filesReceiving: MakeFilesReceiving(daemon, grpcClient),
-		clientID:       daemon.clientID,
+		remoteHostPort:           remoteHostPort,
+		remoteHost:               ExtractRemoteHostWithoutPort(remoteHostPort),
+		grpcClient:               grpcClient,
+		clientID:                 daemon.clientID,
+		chanToUpload:             make(chan fileUploadReq, 50),
+		compilationServiceClient: pb.NewCompilationServiceClient(grpcClient.connection),
 	}
 
 	if err != nil {
-		return remote, err
-	}
-
-	_, err = grpcClient.pb.StartClient(ctxWithTimeout, &pb.StartClientRequest{
-		ClientID:      daemon.clientID,
-		ClientVersion: common.GetVersion(),
-	})
-	if err != nil {
-		return remote, err
-	}
-
-	if err := remote.filesUploading.CreateUploadStream(); err != nil {
-		return remote, err
-	}
-
-	if err := remote.filesReceiving.CreateReceiveStream(); err != nil {
 		return remote, err
 	}
 
 	return remote, nil
+}
+
+func (remote *RemoteConnection) StartFileMonitoring(daemon *Daemon) {
+	go remote.CreateUploadStream()
+	go remote.CreateReceiveStream(daemon.FindInvocationBySessionID)
+}
+
+func (remote *RemoteConnection) StartClientRequest() error {
+	ctxConnect, cancelFunc := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	defer cancelFunc()
+	_, err := remote.compilationServiceClient.StartClient(ctxConnect, &pb.StartClientRequest{
+		ClientID:      remote.clientID,
+		ClientVersion: common.GetVersion(),
+	})
+
+	return err
+}
+
+func (remote *RemoteConnection) OnRemoteBecameUnavailable(reason error) {
+	if !remote.isUnavailable.Swap(true) {
+		logClient.Error("remote", remote.remoteHostPort, "became unavailable:", reason)
+	}
 }
 
 // StartCompilationSession starts a session on the remote:
@@ -80,7 +89,7 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
 	}
 
-	startSessionReply, err := remote.grpcClient.pb.StartCompilationSession(
+	startSessionReply, err := remote.compilationServiceClient.StartCompilationSession(
 		remote.grpcClient.callContext,
 		&pb.StartCompilationSessionRequest{
 			ClientID:        remote.clientID,
@@ -99,13 +108,22 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 	return startSessionReply.FileIndexesToUpload, nil
 }
 
+func (remote *RemoteConnection) StartUploadingFileToRemote(invocation *Invocation, file *pb.FileMetadata, fileIndex uint32) {
+	remote.chanToUpload <- fileUploadReq{
+		clientID:   remote.clientID,
+		invocation: invocation,
+		file:       file,
+		fileIndex:  fileIndex,
+	}
+}
+
 // UploadFilesToRemote uploads files to the remote in parallel and finishes after all of them are done.
 func (remote *RemoteConnection) UploadFilesToRemote(invocation *Invocation, requiredFiles []*pb.FileMetadata, fileIndexesToUpload []uint32) error {
 	invocation.waitUploads.Store(int32(len(fileIndexesToUpload)))
 	invocation.wgUpload.Add(int(invocation.waitUploads.Load()))
 
 	for _, fileIndex := range fileIndexesToUpload {
-		remote.filesUploading.StartUploadingFileToRemote(invocation, requiredFiles[fileIndex], fileIndex)
+		remote.StartUploadingFileToRemote(invocation, requiredFiles[fileIndex], fileIndex)
 	}
 
 	invocation.wgUpload.Wait()
@@ -127,7 +145,7 @@ func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) 
 	if remote.isUnavailable.Load() {
 		return
 	}
-	_, _ = remote.grpcClient.pb.StopClient(
+	_, _ = remote.compilationServiceClient.StopClient(
 		ctxSmallTimeout,
 		&pb.StopClientRequest{
 			ClientID: remote.clientID,
@@ -135,5 +153,6 @@ func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) 
 }
 
 func (remote *RemoteConnection) Clear() {
+	remote.compilationServiceClient = nil
 	remote.grpcClient.Clear()
 }
