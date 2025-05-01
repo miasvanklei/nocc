@@ -17,6 +17,8 @@ All configuration on a server-side is done using a configuration file, located a
 | `Servers           = []{string}` | Remote nocc servers — an array of 'host:port'.                                                                                                                                           |
 | `LogFileName       = {string}`   | A filename to log, nothing by default. Errors are duplicated to stderr always.always.                                                                                                    |
 | `LogLevel          = {int}`      | Logger verbosity level for INFO (-1 off, default 0, max 2). Errors are always logged                                                                                                     |
+| `InvocationTimeout = {int}`      | Duration a single remote compilation is aborted and is done locally (remotely takes to long)                                                                                             |
+| `ConnectionTimeout = {int}`      | Timeout until nocc-daemon is terminated                                                                                                                                                  |
 
 For real usage, you'll definitely have to specify `Servers`. It also makes sense of setting `ClientId` Other options are unlikely to be used. 
 
@@ -25,20 +27,21 @@ When you launch lots of jobs like `make -j 600`, then `nocc-daemon` has to maint
 
 <p><br></p>
 
-## Configuring nocc server
+## Configuring nocc-server
 
 All configuration on a server-side is done using a configuration file, located at /etc/nocc/server.conf. For an example see 'data/nocc-server.conf.example'
 
-| Configuration setting          | Description                                                                             |
-|--------------------------------|-----------------------------------------------------------------------------------------|
-| `ListenAddr        = {string}` | Binding address, default localhost:43210                                                |
-| `SrcCacheDir       = {string}` | Directory for incoming source/header files, default */tmp/nocc/cpp*.                    |
-| `ObjCacheDir       = {string}` | Directory for resulting obj files and obj cache, default */tmp/nocc/obj*.               |
-| `LogFilename       = {string}` | A filename to log, by default use stderr.                                               |
-| `LogLevel          = {int}`    | Logger verbosity level for INFO (-1 off, default 0, max 2). Errors are logged always.   |
-| `SrcCacheSize      = {int}`    | Header and source cache limit, in bytes, default 4G.                                    |
-| `ObjCacheSize      = {int}`    | Compiled obj cache limit, in bytes, default 16G.                                        |
-| `CompilerQueueSize = {int}`    | Max amount of C++ compiler processes launched in parallel, default *nCPU*.              |
+| Configuration setting           | Description                                                                                                 |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------|
+| `ListenAddr        = {string}`  | Binding address, default localhost:43210                                                                    |
+| `SrcCacheDir       = {string}`  | Directory for incoming source/header files, default */tmp/nocc/cpp*.                                        |
+| `ObjCacheDir       = {string}`  | Directory for resulting obj files and obj cache, default */tmp/nocc/obj*.                                   |
+| `LogFilename       = {string}`  | A filename to log, by default use stderr.                                                                   |
+| `LogLevel          = {int}`     | Logger verbosity level for INFO (-1 off, default 0, max 2). Errors are logged always.                       |
+| `SrcCacheSize      = {int}`     | Header and source cache limit, in bytes, default 4G.                                                        |
+| `ObjCacheSize      = {int}`     | Compiled obj cache limit, in bytes, default 16G.                                                            |
+| `CompilerQueueSize = {int}`     | Max amount of C++ compiler processes launched in parallel, default *nCPU*.                                  |
+| `CompilerDirs     = []{string}` | An array that contains the binary/libary paths to the compiler (/usr/lib/llvm/20/bin, /usr/lib/llvm/20/lib) |
 
 All file caches are lost on restart, as references to files are kept in memory. 
 There is also an LRU expiration mechanism to fit cache limits.

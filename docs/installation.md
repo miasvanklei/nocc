@@ -5,27 +5,12 @@ Here we'll install `nocc` and launch a sample cpp file to make sure everything w
 
 <p><br></p>
 
-## Installing nocc from ready binaries
-
-`nocc` project consists of three binaries:
-
-* `nocc` — a tiny C++ wrapper
-* `nocc-daemon` — a daemon that would run in the background during the build process
-* `nocc-server` — a binary to be run on the server-side
-
-The easiest way to install is just to download binaries from the [releases page](https://github.com/VKCOM/nocc/releases).
-
-After extracting an archive with `tar -xvf nocc-xxx.tar.gz`, you'll get these 3 binaries.
-
-*Note, that for Mac, you'll probably have a "developer cannot be verified" warning. It can be suppressed in Security settings. Anyway, running `nocc` for mac is just for development/testing purposes.*
-
-
-<p><br></p>
-
 ## Installing nocc from sources
 
-You'll need Go and g++ to be installed (on Mac, `g++` is usually a symlink to `clang++`, that's okay).
-Nocc also depends on the tools "mount" and "chroot, to provide a virtual root on a nocc-server.
+Nocc depends on the following programming/tools:
+- go: To compile nocc
+- mount/chroot: to provide a virtual root on a nocc-server.
+At runtime nocc-daemon depends on systemd for socket creation
 
 Clone this repo, proceed to its root, and run:
 
@@ -36,13 +21,16 @@ make server
 
 You'll have 3 binaries emitted in the `bin/` folder.
 
-*Note, that for modifying source code, you'll also have to install protobuf compiler,
-see [bootstrap.sh](../bootstrap.sh)*
-
+For (re)generating the generated protobuf source code, you'll also have to install protobuf compiler,
 
 <p><br></p>
 
 ## Run a simple example locally
+
+Install the binaries and systemd services:
+```bash
+make install
+```
 
 Save this fragment as `1.cpp`:
 
@@ -60,22 +48,20 @@ And this one — as `1.h`:
 int square(int a);
 ```
 
-Run `./nocc-server`. You'll see a message like
-
-```text
-INFO nocc-server started, listening to 0.0.0.0:43210
+Start (as root) the Systemd services for nocc-daemon/nocc-server:
+```bash
+systemctl start nocc-daemon.socket
+systemctl start nocc-server.service
 ```
 
 Open another console: you'll run `nocc` client there. 
-As a minimal requirement, you'll have to specify `NOCC_SERVERS` and `NOCC_GO_EXECUTABLE` environment variables:
 
 ```bash
-NOCC_SERVERS=127.0.0.1:43210 NOCC_GO_EXECUTABLE=/path/to/nocc-daemon /path/to/nocc g++ 1.cpp -o 1.o -c
+nocc g++ 1.cpp -o 1.o -c
 ```
 
-You'll see a warning, that daemon logs won't be available, skip it. 
 If everything works, there should be `1.o` emitted.
-To make sure that it's not just a local launch, look through server logs in the console (about a new client and so on).
+To make sure that it's not just a local launch, look through server logs (journalctl) in the console (about a new client and so on).
 
 
 <p><br></p>

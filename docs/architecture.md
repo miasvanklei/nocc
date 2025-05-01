@@ -2,7 +2,6 @@
 
 Here we describe some aspects of `nocc` internals.
 
-
 <p><br></p>
 
 ## Daemon, client, and server
@@ -11,15 +10,15 @@ Here we describe some aspects of `nocc` internals.
     <img src="img/nocc-daemon.drawio.png" alt="daemon" height="356">
 </p>
 
-`nocc` itself is a C++ lightweight binary that pipes command-line to `nocc-daemon`.
+`nocc` itself is a lightweight binary that pipes command-line to `nocc-daemon`.
 
-When a build system (make / KPHP / etc.) simultaneously calls compilation jobs like
+When a build system (make / ninja / etc.) simultaneously calls compilation jobs like
 ```bash
 nocc g++ ... 1.cpp
 nocc g++ ... 2.cpp
 # other 100k jobs
 ```
-then this binary is executed, actually. All its sources are present in [a single file](../cmd/nocc.cpp). 
+then this binary is executed, actually. All its sources are present in [a single file](../cmd/nocc/main.go). 
 `nocc` processes start and die, while a daemon is running.
 
 `nocc-daemon` is a background process written in Go. 
@@ -30,8 +29,8 @@ When a new `nocc` process starts and pipes a command-line to the daemon, the dae
 * *(typical case)* invoked for compiling .cpp to .o
 * invoked for compiling a precompiled header
 * invoked for linking
-* a command-line has unsupported options (`--sysroot` and some others are not handled yet)
-* a command-line could not be parsed (`-o` does not exist, or an input file not detected, etc.)
+* a command-line has unsupported options
+* a command-line could not be parsed (an input file not detected, etc.)
 * remote compilation is not available (e.g. `-march=native`)
 
 Compiling a cpp file is called **an invocation** (see [invocation.go](../internal/client/invocation.go)). 
@@ -40,11 +39,11 @@ Precompiled headers are handled in a special way (see below).
 All other cases fall back to local compilation.
 
 `nocc-server` is a background process running on every compilation node. 
-It handles compilation, stores caches, and writes statistics. 
+It handles compilation and stores caches. 
 
-When `nocc-daemon` starts, it connects to all servers enumerated in the `NOCC_SERVERS` env var. 
+When `nocc-daemon` starts, it connects to all servers enumerated in the `Servers` property
 For a server, a launched daemon is **a client**, with a unique *clientID* 
-([see](./configuration.md#configuring-nocc-client) `NOCC_CLIENT_ID`). 
+([see](./configuration.md#configuring-nocc-daemon)). 
 
 Here's the order: a build process starts → a daemon starts → a new client appears an all servers → the client uploads files and command-lines → the server compiles them and sends objs back → `nocc` processes start and die, whereas `nocc-daemon` stays in the background → a build process finishes → a daemon dies → the client disappears on all servers.
 
@@ -53,7 +52,7 @@ Here's the order: a build process starts → a daemon starts → a new client ap
 
 ## Balancing files over servers
 
-When a daemon has an invocation to compile `1.cpp`, it **chooses a remote server based on a file name hash** (not a full path, just by basename).
+When a daemon has an invocation to compile `1.cpp`, it **chooses a remote server based on file name hash**.
 It does not try to balance servers by load, or least used, etc. — just a name hash.
 
 The intention is simple: when a build process runs from different machines, it could be in different folders in CI build agents — we want a file with its dependencies to point to one and the same server always.
@@ -86,7 +85,7 @@ Here's what a cpp compilation (one `nocc` invocation handled by a daemon) looks 
 
 Every running daemon is supposed to have a unique *clientID*. 
 All files uploaded from that daemon are saved into a working dir representing a client's file structure. 
-The target idea for `nocc-server` is to launch `g++` having prefixed all paths:
+The target idea for `nocc-server` is to launch `g++` in a chroot, with *clientID* as base:
 
 <p align="center">
     <img src="img/nocc-file-mapping.drawio.png" alt="file mapping" height="344">
@@ -141,7 +140,7 @@ It's also based on hashes.
 
 The final server cmd line looks like
 ```bash
-g++ -Wall -c ... -iquote /tmp/client1/headers -o /tmp/client1/some.cpp.o /tmp/client1/some.cpp
+g++ -Wall -c ... -iquote headers -o some.cpp.o some.cpp
 ```
 
 We want to reuse a ready obj file if and only if:
@@ -155,37 +154,7 @@ We want to reuse a ready obj file if and only if:
 
 If a project is being compiled with different compiler options (for example, with and without debug symbols), then every cpp would have two objects stored in obj cached, and recompilation would choose one of them based on the current invocation.
 
-If there were compilation warnings (stderr is not empty), a file is not put to obj cache, just in case.
-
 Like src cache, obj cache also has an LRU expiration. Obj cache is also dropped on restart.
-
-
-<p><br></p>
-
-## Own includes parser
-
-For every cpp file compiled, we need to detect dependencies (all `#include` recursively).
-
-The standard way to do this is to use the `-M` [flag](https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html): 
-it launches a preprocessor (not a compilation) and outputs dependencies of a cpp file (not a preprocessor result).
-
-Own includes parser does the same work as `cxx -M` but much faster.
-It has methods that parse cpp/h files, find `#include`, resolve them, and keep going recursively.
-It takes all `-I` / `-iquote` / `-isystem` dirs from cmd line into account, it works well with `#include_next`.
-A daemon has an includes cache for all invocations, so that system headers are traversed only once.
-As a result, we have all dependencies, just like the C++ preprocessor was invoked.
-
-Unlike `cxx -M`, this is not a preprocessor, so it does nothing about `#ifdef` etc.
-Hence, it can find more includes than natively, some of them may not exist, especially in system headers.
-This is not an error, because, in practice, they are likely to be surrounded with `#ifdef` and never reached by a real C++ compiler.
-But if own includes parsed finds fewer dependencies than `cxx -M`, it's a bug.
-
-Along with finding dependencies, hashes are calculated to be sent to a server.
-
-Own includes can work **only if paths are statically resolved**: it can do nothing about `#include MACRO()`.
-For instance, it can't analyze boost, as it's full of macro-includes.
-Only disabling own includes (invoking a real preprocessor) can help in that case. 
-This can be done by setting the `NOCC_DISABLE_OWN_INCLUDES=1` environment variable.
 
 
 <p><br></p>
@@ -196,31 +165,29 @@ This can be done by setting the `NOCC_DISABLE_OWN_INCLUDES=1` environment variab
 ```bash
 nocc g++ -x c++-header -o all-headers.h.gch all-headers.h
 ```
-It emits `all-headers.h.nocc-pch` **INSTEAD OF** `.gch/.pch` on a client-side —
-and compiled on a server-side into a real `.gch/.pch`.
+It emits `all-headers.h.nocc-pch` and `all-headers.h.gch` (in case remote compilation fails) on the client-side. Later when the precompiled header is requested, it is compiled on the server-side into a real `.gch/.pch`.
 
 <p align="center">
     <img src="img/nocc-own-pch.drawio.png" alt="own pch" height="281">
 </p>
 
-There are two notable reasons of heading this way:
-1. If we compile `.gch` locally, we nevertheless should upload it to all remotes. But `.gch` files are very big, so the first run uploading it to N servers simultaneously takes too long.
-2. If `.gch` headers (g++) can work after uploading, `.pch` headers (clang) can not. Clang **won't use a precompiled header** compiled on another machine, even with `--relocatable-pch` flag. The only solution for clang is to compile pch on a remote, anyway.
+There is one notable reason of doing it this way:
+- A precompiled header can get very big, so the first run uploading it to N servers simultaneously takes too long, longer that compiling the precompiled header on N servers
 
-A `.nocc-pch` file is a text file containing all dependencies required to be compiled on any remote. 
-Producing it on a client-side takes noticeably less time than compiling a real pch.
+A `.nocc-pch` file is a json file containing the following information.
+- The hash of the locally compiled pch file (for server-side usage of key for obj cache)
+- The Compiler name
+- The input/output name
+- The Compiler arguments
 
-When a client collects dependencies and sees `#include "all-headers.h"`, it discovers `all-headers.h.nocc-pch`
-and uploads it like a regular dependency (then `all-headers.h` itself is not uploaded at all).
+When a client collects dependencies and sees `#include "all-headers.h"`, it discovers `all-headers.h.nocc-pch`.
+It then sends an extra option to the server telling that a pch file should be compiled.
 
-When `all-headers.h.nocc-pch` is uploaded, the remote compiles it,
-resulting in `all-headers.h` and `all-headers.h.gch` again, but stored on remote (until restart).
+When `all-headers.h.nocc-pch` is uploaded, the remote runs the commandline from deserializing the `nocc-pch` file resulting in `all-headers.h.gch`, but stored on remote (until restart).
 After it has been uploaded and compiled once, all other cpp files depending on this `.nocc-pch`
 will use already compiled `.gch` that is hard-linked into a client working dir.
 
-The original `.gch/.pch` on a client-side is NOT generated, because it's useless if everything works ok.
-If remote compilation fails for any reason, `nocc` will fall back to local compilation.
-In this case, local compilation will be done without precompiled header, as it doesn't exist.
+If remote compilation fails for any reason, `nocc` will fall back to local compilation, using the pch the locally generated pch.
 
 
 <p><br></p>
