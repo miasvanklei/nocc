@@ -145,9 +145,9 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
 	}
 
-	// save to obj cache (to be safe, only if compiler output is empty)
+	// save to obj cache only if compilation was successful
 	if !session.objCacheKey.IsEmpty() {
-		if session.compilerExitCode == 0 && len(session.compilerStderr) == 0 {
+		if session.compilerExitCode == 0 {
 			if stat, err := os.Stat(session.OutputFile); err == nil {
 				_ = objFileCache.SaveFileToCache(session.OutputFile, path.Base(session.InputFile)+".o", session.objCacheKey, stat.Size())
 			}
