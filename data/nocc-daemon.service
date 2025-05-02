@@ -4,5 +4,5 @@ After=network.target
 Requires=nocc-daemon.socket
 
 [Service]
-ExecStart=/usr/lib/nocc/bin/nocc-daemon
+ExecStart=/usr/bin/nocc-daemon
 Type=notify

@@ -52,9 +52,9 @@ install.systemd:
 
 .PHONY: install.bin
 install.bin:
-	install -D -m 755 bin/nocc $(PREFIX)/lib/nocc/bin/nocc
-	install -D -m 755 bin/nocc-daemon $(PREFIX)/lib/nocc/bin/nocc-daemon
-	install -D -m 755 bin/nocc-server $(PREFIX)/lib/nocc/bin/nocc-server
+	install -D -m 755 bin/nocc $(PREFIX)/bin/nocc
+	install -D -m 755 bin/nocc-daemon $(PREFIX)/bin/nocc-daemon
+	install -D -m 755 bin/nocc-server $(PREFIX)/bin/nocc-server
 
 .PHONY: install.config
 install.config:

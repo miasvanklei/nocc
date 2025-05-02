@@ -3,7 +3,7 @@ Description=Nocc: A Distributed Compilation Server
 After=network.target
 
 [Service]
-ExecStart=/usr/lib/nocc/bin/nocc-server
+ExecStart=/usr/bin/nocc-server
 
 [Install]
 WantedBy=multi-user.target
