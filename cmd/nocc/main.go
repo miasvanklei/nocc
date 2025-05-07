@@ -16,7 +16,7 @@ import (
 func main() {
 	compiler, args := splitCompilerAndArgs(os.Args)
 	if shouldCompileLocally(args) {
-		executeLocally(compiler, args, "compiling locally")
+		executeLocally(compiler, args, "")
 	}
 
 	c, err := net.Dial("unix", "/run/nocc-daemon.sock")
