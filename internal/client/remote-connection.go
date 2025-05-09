@@ -43,6 +43,7 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
 
 	remote := &RemoteConnection{
+		quitDaemonChan:           daemon.quitDaemonChan,
 		remoteHostPort:           remoteHostPort,
 		remoteHost:               ExtractRemoteHostWithoutPort(remoteHostPort),
 		grpcClient:               grpcClient,
