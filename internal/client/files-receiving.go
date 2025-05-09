@@ -81,7 +81,6 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 	for {
 		firstChunk, err := stream.Recv()
 
-		// such complexity of error handling prevents hanging sessions and proper stream recreation
 		if err != nil {
 			return false, err
 		}
@@ -104,7 +103,7 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 			continue
 		}
 
-		err, needRecreateStream := receiveObjFileByChunks(stream, invocation, int(firstChunk.FileSize))
+		needRecreateStream, err := receiveObjFileByChunks(stream, invocation, int(firstChunk.FileSize))
 		invocation.DoneRecvObj(err)
 
 		if err != nil {
@@ -117,7 +116,7 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 
 // receiveObjFileByChunks is an actual implementation of saving a server stream to a local client .o file.
 // See server.sendObjFileByChunks.
-func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, invocation *Invocation, fileSize int) (error, bool) {
+func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamClient, invocation *Invocation, fileSize int) (bool, error) {
 	var errWrite error
 	var errRecv error
 	var receivedBytes int
@@ -150,10 +149,10 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 
 	switch {
 	case errRecv != nil:
-		return errRecv, true // "true" to recreate recv stream
+		return true, errRecv// "true" to recreate recv stream
 	case errWrite != nil:
-		return errWrite, false // "false" means that the stream is ok, there was just a problem of saving a file
+		return false, errWrite // "false" means that the stream is ok, there was just a problem of saving a file
 	default:
-		return nil, false
+		return false, nil
 	}
 }
