@@ -117,43 +117,30 @@ func pathAbs(cwd string, relPath string) string {
 }
 
 func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
-	parseArgFile := func(key string, arg string, argIndex *int) (string, bool) {
-		if arg == key { // -I /path
-			if *argIndex+1 < len(cmdLine) {
+	parseArgFile := func(args []string, key string, arg string, argIndex *int) (string, bool) {
+		if arg == key {
+			if *argIndex+1 < len(args) {
 				*argIndex++
-				if cmdLine[*argIndex] == "-Xclang" { // -Xclang -include -Xclang {file}
+				if args[*argIndex] == "-Xclang" { // -Xclang -include -Xclang {file}
 					*argIndex++
 				}
-				return cmdLine[*argIndex], true
+				return args[*argIndex], true
 			} else {
 				invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", arg)
 				return "", false
 			}
-		} else if strings.HasPrefix(arg, key) { // -I/path
+		} else if strings.HasPrefix(arg, key) {
 			return arg[len(key):], true
 		}
 		return "", false
 	}
 
-	parseArgStr := func(args []string, key string, argIndex *int) string {
-		if args[*argIndex] == key {
-			if *argIndex+1 < len(args) {
-				*argIndex++
-				return args[*argIndex]
-			} else {
-				invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", args[*argIndex])
-				return ""
-			}
-		}
-		return ""
-	}
-
-	parsePreprocessorArg := func(args []string, argIndex *int) bool {
-		if mfFile := parseArgStr(args, "-MD", argIndex); mfFile != "" {
+	parsePreprocessorArg := func(args []string, arg string, argIndex *int) bool {
+		if mfFile, ok := parseArgFile(args, "-MD", arg, argIndex); ok {
 			invocation.depsFlags.SetCmdFlagMD()
 			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 			return true
-		} else if mfFile := parseArgStr(args, "-MMD", argIndex); mfFile != "" {
+		} else if mfFile, ok := parseArgFile(args, "-MMD", arg, argIndex); ok{
 			invocation.depsFlags.SetCmdFlagMMD()
 			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 			return true
@@ -171,25 +158,25 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			if arg == "-c" {
 				invocation.hascOption = true
 				continue
-			} else if oFile, ok := parseArgFile("-o", arg, &i); ok {
+			} else if oFile, ok := parseArgFile(cmdLine, "-o", arg, &i); ok {
 				if oFile == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
-			} else if dir, ok := parseArgFile("-I", arg, &i); ok {
+			} else if dir, ok := parseArgFile(cmdLine, "-I", arg, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-I", pathAbs(invocation.cwd, dir))
 				continue
-			} else if dir, ok := parseArgFile("-iquote", arg, &i); ok {
+			} else if dir, ok := parseArgFile(cmdLine, "-iquote", arg, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-iquote", pathAbs(invocation.cwd, dir))
 				continue
-			} else if dir, ok := parseArgFile("-isystem", arg, &i); ok {
+			} else if dir, ok := parseArgFile(cmdLine, "-isystem", arg, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-isystem", pathAbs(invocation.cwd, dir))
 				continue
-			} else if iFile, ok := parseArgFile("-include-pch", arg, &i); ok {
+			} else if iFile, ok := parseArgFile(cmdLine, "-include-pch", arg, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-include-pch", pathAbs(invocation.cwd, iFile))
 				continue
-			} else if iFile, ok := parseArgFile("-include", arg, &i); ok {
+			} else if iFile, ok := parseArgFile(cmdLine, "-include", arg, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, "-include", iFile)
 				continue
 			} else if arg == "-x" {
@@ -203,13 +190,13 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-I-" || arg == "-E" {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if mfFile := parseArgStr(cmdLine, "-MF", &i); mfFile != "" {
+			} else if mfFile, ok := parseArgFile(cmdLine, "-MF", arg, &i); ok {
 				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 				continue
-			} else if strArg := parseArgStr(cmdLine, "-MT", &i); strArg != "" {
+			} else if strArg, ok := parseArgFile(cmdLine, "-MT", arg, &i); ok {
 				invocation.depsFlags.SetCmdFlagMT(strArg)
 				continue
-			} else if strArg := parseArgStr(cmdLine, "-MQ", &i); strArg != "" {
+			} else if strArg, ok := parseArgFile(cmdLine, "-MQ", arg, &i); ok {
 				invocation.depsFlags.SetCmdFlagMQ(strArg)
 				continue
 			} else if arg == "-MD" {
@@ -239,7 +226,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if strings.HasPrefix(arg, "-Wp") {
 				wArgs := strings.Split(arg, ",")
 				for j := 1; j < len(wArgs); j++ {
-					if !parsePreprocessorArg(wArgs, &j) {
+					if !parsePreprocessorArg(wArgs, wArgs[j], &j) {
 						cmdLine = append(cmdLine, wArgs[j])
 					}
 				}
