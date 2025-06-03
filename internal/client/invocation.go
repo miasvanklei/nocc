@@ -117,38 +117,6 @@ func pathAbs(cwd string, relPath string) string {
 }
 
 func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
-	parseArgFile := func(args []string, key string, arg string, argIndex *int) (string, bool) {
-		if arg == key {
-			if *argIndex+1 < len(args) {
-				*argIndex++
-				if args[*argIndex] == "-Xclang" { // -Xclang -include -Xclang {file}
-					*argIndex++
-				}
-				return args[*argIndex], true
-			} else {
-				invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", arg)
-				return "", false
-			}
-		} else if strings.HasPrefix(arg, key) {
-			return arg[len(key):], true
-		}
-		return "", false
-	}
-
-	parsePreprocessorArg := func(args []string, arg string, argIndex *int) bool {
-		if mfFile, ok := parseArgFile(args, "-MD", arg, argIndex); ok {
-			invocation.depsFlags.SetCmdFlagMD()
-			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
-			return true
-		} else if mfFile, ok := parseArgFile(args, "-MMD", arg, argIndex); ok{
-			invocation.depsFlags.SetCmdFlagMMD()
-			invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
-			return true
-		}
-
-		return false
-	}
-
 	for i := 0; i < len(cmdLine); i++ {
 		arg := cmdLine[i]
 		if len(arg) == 0 {
@@ -158,26 +126,14 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			if arg == "-c" {
 				invocation.hascOption = true
 				continue
-			} else if oFile, ok := parseArgFile(cmdLine, "-o", arg, &i); ok {
+			} else if oFile, ok := invocation.parseArgFile(cmdLine, "-o", &i); ok {
 				if oFile == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
 				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
 				continue
-			} else if dir, ok := parseArgFile(cmdLine, "-I", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-I", pathAbs(invocation.cwd, dir))
-				continue
-			} else if dir, ok := parseArgFile(cmdLine, "-iquote", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-iquote", pathAbs(invocation.cwd, dir))
-				continue
-			} else if dir, ok := parseArgFile(cmdLine, "-isystem", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-isystem", pathAbs(invocation.cwd, dir))
-				continue
-			} else if iFile, ok := parseArgFile(cmdLine, "-include-pch", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-include-pch", pathAbs(invocation.cwd, iFile))
-				continue
-			} else if iFile, ok := parseArgFile(cmdLine, "-include", arg, &i); ok {
-				invocation.compilerArgs = append(invocation.compilerArgs, "-include", iFile)
+			} else if args, ok := invocation.parseIncludeArgs(cmdLine, &i); ok {
+				invocation.compilerArgs = append(invocation.compilerArgs, args...)
 				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
@@ -190,13 +146,13 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-I-" || arg == "-E" {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if mfFile, ok := parseArgFile(cmdLine, "-MF", arg, &i); ok {
+			} else if mfFile, ok := invocation.parseArgFile(cmdLine, "-MF", &i); ok {
 				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
 				continue
-			} else if strArg, ok := parseArgFile(cmdLine, "-MT", arg, &i); ok {
+			} else if strArg, ok := invocation.parseArgFile(cmdLine, "-MT", &i); ok {
 				invocation.depsFlags.SetCmdFlagMT(strArg)
 				continue
-			} else if strArg, ok := parseArgFile(cmdLine, "-MQ", arg, &i); ok {
+			} else if strArg, ok := invocation.parseArgFile(cmdLine, "-MQ", &i); ok {
 				invocation.depsFlags.SetCmdFlagMQ(strArg)
 				continue
 			} else if arg == "-MD" {
@@ -226,7 +182,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if strings.HasPrefix(arg, "-Wp") {
 				wArgs := strings.Split(arg, ",")
 				for j := 1; j < len(wArgs); j++ {
-					if !parsePreprocessorArg(wArgs, wArgs[j], &j) {
+					if !invocation.parsePreprocessorArg(wArgs, &j) {
 						cmdLine = append(cmdLine, wArgs[j])
 					}
 				}
@@ -265,14 +221,61 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	}
 }
 
+func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int) bool {
+	if mfFile, ok := invocation.parseArgFile(args, "-MD", argIndex); ok {
+		invocation.depsFlags.SetCmdFlagMD()
+		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+		return true
+	} else if mfFile, ok := invocation.parseArgFile(args, "-MMD", argIndex); ok {
+		invocation.depsFlags.SetCmdFlagMMD()
+		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+		return true
+	}
+
+	return false
+}
+
+func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]string, bool) {
+	keys := []string{"-I", "-iquote", "-isystem", "-include-pch", "-include"}
+
+	for _, key := range keys {
+		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
+			return []string{key, pathAbs(invocation.cwd, dir)}, true
+		}
+	}
+
+	return nil, false
+}
+
+func (invocation *Invocation) parseArgFile(args []string, key string, argIndex *int) (string, bool) {
+	arg := args[*argIndex]
+
+	if arg == key {
+		if *argIndex+1 < len(args) {
+			*argIndex++
+			if args[*argIndex] == "-Xclang" { // -Xclang -include -Xclang {file}
+				*argIndex++
+			}
+			return args[*argIndex], true
+		} else {
+			invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", arg)
+			return "", false
+		}
+	} else if strings.HasPrefix(arg, key) {
+		return arg[len(key):], true
+	}
+
+	return "", false
+}
+
 func determineLocalCompiling(invocation *Invocation, arg string) {
 	shouldCompileLocally :=
 		strings.Contains(invocation.cwd, "TryCompile-") || // cmake
-		strings.Contains(invocation.cwd, "meson-private") || // meson
-		strings.Contains(invocation.cwd, ".conf_check") || // waf
-		strings.HasPrefix(arg, "cgo-gcc-input") || // go
-		strings.HasPrefix(arg, "conftest") || // autoconf
-		strings.HasPrefix(arg, "tmp.conftest.") // autoconf
+			strings.Contains(invocation.cwd, "meson-private") || // meson
+			strings.Contains(invocation.cwd, ".conf_check") || // waf
+			strings.HasPrefix(arg, "cgo-gcc-input") || // go
+			strings.HasPrefix(arg, "conftest") || // autoconf
+			strings.HasPrefix(arg, "tmp.conftest.") // autoconf
 
 	if shouldCompileLocally {
 		invocation.invokeType = invokedForLocalCompiling
