@@ -23,7 +23,7 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		Servers:           []string{"localhost:43210"},
 		LogFileName:       "stderr",
 		LogLevel:          0,
-		InvocationTimeout: 10 * 60, // 10 minutes
+		InvocationTimeout: 15 * 60, // 15 minutes
 		ConnectionTimeout: 15,      // 15 seconds
 		ClientID:          "",
 	}
