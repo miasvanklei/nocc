@@ -99,16 +99,15 @@ func (daemon *Daemon) ConnectToRemoteHosts() {
 
 	for index, remoteHostPort := range daemon.remoteNoccHosts {
 		go func(index int, remoteHostPort string) {
-			remote, err := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr)
+			remote := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr)
+			daemon.remoteConnections[index] = remote
+			err := remote.SetupConnection()
+
 			if err != nil {
-				remote.isUnavailable.Store(true)
+				remote.OnRemoteBecameUnavailable(err)
 				logClient.Error("error connecting to", remoteHostPort, err)
 			}
 
-			remote.StartClientRequest()
-			remote.StartFileMonitoring(daemon)
-
-			daemon.remoteConnections[index] = remote
 			wg.Done()
 		}(index, remoteHostPort)
 	}

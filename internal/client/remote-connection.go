@@ -20,12 +20,14 @@ type RemoteConnection struct {
 	chanToUpload   chan fileUploadReq
 	quitDaemonChan chan int
 
+	socksProxyAddr string
 	remoteHostPort string
 	remoteHost     string // for console output and logs, just IP is more pretty
 	isUnavailable  atomic.Bool
 
 	grpcClient               *GRPCClient
 	compilationServiceClient pb.CompilationServiceClient
+	findInvocation func(uint32) *Invocation
 
 	clientID     string // = Daemon.clientID
 	hostUserName string // = Daemon.hostUserName
@@ -39,36 +41,30 @@ func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
 	return
 }
 
-func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string) (*RemoteConnection, error) {
-	grpcClient, err := MakeGRPCClient(remoteHostPort, socksProxyAddr)
-
+func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string) *RemoteConnection {
 	remote := &RemoteConnection{
 		quitDaemonChan:           daemon.quitDaemonChan,
+		socksProxyAddr:           socksProxyAddr,
 		remoteHostPort:           remoteHostPort,
 		remoteHost:               ExtractRemoteHostWithoutPort(remoteHostPort),
-		grpcClient:               grpcClient,
 		clientID:                 daemon.clientID,
 		chanToUpload:             make(chan fileUploadReq, 50),
-		compilationServiceClient: pb.NewCompilationServiceClient(grpcClient.connection),
+		findInvocation:           daemon.FindInvocationBySessionID,
 	}
 
-	if err != nil {
-		return remote, err
-	}
-
-	return remote, nil
+	return remote
 }
 
-func (remote *RemoteConnection) StartFileMonitoring(daemon *Daemon) {
+func (remote *RemoteConnection) startFileMonitoring() {
 	go remote.CreateUploadStream()
-	go remote.CreateReceiveStream(daemon.FindInvocationBySessionID)
+	go remote.CreateReceiveStream()
 }
 
-func (remote *RemoteConnection) StartClientRequest() error {
+func StartClientRequest(csc pb.CompilationServiceClient, clientID string) error {
 	ctxConnect, cancelFunc := context.WithTimeout(context.Background(), 5000*time.Millisecond)
 	defer cancelFunc()
-	_, err := remote.compilationServiceClient.StartClient(ctxConnect, &pb.StartClientRequest{
-		ClientID:      remote.clientID,
+	_, err := csc.StartClient(ctxConnect, &pb.StartClientRequest{
+		ClientID:      clientID,
 		ClientVersion: common.GetVersion(),
 	})
 
@@ -78,7 +74,47 @@ func (remote *RemoteConnection) StartClientRequest() error {
 func (remote *RemoteConnection) OnRemoteBecameUnavailable(reason error) {
 	if !remote.isUnavailable.Swap(true) {
 		logClient.Error("remote", remote.remoteHostPort, "became unavailable:", reason)
+		remote.Clear()
+		go remote.reconnectRemote()
 	}
+}
+
+func (remote *RemoteConnection) reconnectRemote() {
+	timeout := time.After(10 * time.Millisecond)
+	for {
+		select {
+		case <-remote.quitDaemonChan:
+			return
+
+		case <- timeout:
+			err := remote.SetupConnection()
+			if err == nil {
+				remote.isUnavailable.Store(false)
+				return
+			}
+			timeout = time.After(10 * time.Second)
+			logClient.Error("remote", remote.remoteHostPort, "unable to reconnect:", err)
+		}
+	}
+}
+
+func (remote *RemoteConnection) SetupConnection() error {
+	grpcClient, err := MakeGRPCClient(remote.remoteHostPort, remote.socksProxyAddr)
+	compilationServiceClient := pb.NewCompilationServiceClient(grpcClient.connection)
+	if err != nil {
+		return err
+	}
+
+	err = StartClientRequest(compilationServiceClient, remote.clientID)
+	if err != nil {
+		return err
+	}
+
+	remote.grpcClient = grpcClient
+	remote.compilationServiceClient = compilationServiceClient
+
+	remote.startFileMonitoring()
+	return nil
 }
 
 // StartCompilationSession starts a session on the remote:

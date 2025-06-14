@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Invocation) {
+func (rc *RemoteConnection) CreateReceiveStream() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -25,7 +25,7 @@ func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Inv
 		return
 	}
 
-	needRecreateStream, err := rc.monitorRemoteStreamForObjReceiving(stream, findInvocation)
+	needRecreateStream, err := rc.monitorRemoteStreamForObjReceiving(stream)
 
 	if err == nil {
 		return
@@ -56,7 +56,7 @@ func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Inv
 		mdSession := stream.Trailer().Get("sessionID")
 		if len(mdSession) == 1 {
 			sessionID, _ := strconv.Atoi(mdSession[0])
-			invocation := findInvocation(uint32(sessionID))
+			invocation := rc.findInvocation(uint32(sessionID))
 			if invocation != nil {
 				invocation.DoneRecvObj(err)
 			}
@@ -69,7 +69,7 @@ func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Inv
 	logClient.Error("recreate recv stream:", err)
 	time.Sleep(100 * time.Millisecond)
 
-	go rc.CreateReceiveStream(findInvocation)
+	go rc.CreateReceiveStream()
 }
 
 // monitorRemoteStreamForObjReceiving listens to a grpc receiving stream and handles .o files sent by a remote.
@@ -77,7 +77,7 @@ func (rc *RemoteConnection) CreateReceiveStream(findInvocation func(uint32) *Inv
 // One stream is used to receive multiple .o files consecutively.
 // If compilation exits with non-zero code, the same stream is used to send error details.
 // See RemoteConnection.WaitForCompiledObj.
-func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.CompilationService_RecvCompiledObjStreamClient, findInvocation func(uint32) *Invocation) (bool, error) {
+func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.CompilationService_RecvCompiledObjStreamClient) (bool, error) {
 	for {
 		firstChunk, err := stream.Recv()
 
@@ -85,7 +85,7 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 			return false, err
 		}
 
-		invocation := findInvocation(firstChunk.SessionID)
+		invocation := rc.findInvocation(firstChunk.SessionID)
 		if invocation == nil {
 			logClient.Error("can't find invocation for obj", "sessionID", firstChunk.SessionID)
 			continue
