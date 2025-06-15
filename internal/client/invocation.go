@@ -236,11 +236,18 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 }
 
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]string, bool) {
-	keys := []string{"-I", "-iquote", "-isystem", "-include-pch", "-include"}
+	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
+	includefileKeys := []string{"-include", "-include-pch"}
 
-	for _, key := range keys {
+	for _, key := range includefolderKeys {
 		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
 			return []string{key, pathAbs(invocation.cwd, dir)}, true
+		}
+	}
+
+	for _, key := range includefileKeys {
+		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
+			return []string{key, dir}, true
 		}
 	}
 
