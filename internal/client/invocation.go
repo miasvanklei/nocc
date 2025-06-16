@@ -280,8 +280,9 @@ func determineLocalCompiling(invocation *Invocation, arg string) {
 		strings.Contains(invocation.cwd, "TryCompile-") || // cmake
 			strings.Contains(invocation.cwd, "meson-private") || // meson
 			strings.Contains(invocation.cwd, ".conf_check") || // waf
-			strings.HasPrefix(arg, "cgo-gcc-input") || // go
-			strings.HasPrefix(arg, "conftest") || // autoconf
+			strings.Contains(arg, "ffconf.") || // ffmpeg
+			strings.Contains(arg, "cgo-gcc-input") || // go
+			strings.HasPrefix(filepath.Base(arg), "conftest") || // autoconf
 			strings.HasPrefix(arg, "tmp.conftest.") // autoconf
 
 	if shouldCompileLocally {
