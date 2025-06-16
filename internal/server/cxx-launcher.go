@@ -35,6 +35,7 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compil
 	chrootarguments = append(chrootarguments, compilerName)
 	chrootarguments = append(chrootarguments, compilerArgs...)
 	chrootarguments = append(chrootarguments, "-o", compileOutput, "-c", compileInput)
+	chrootarguments = append(chrootarguments, "-Wno-missing-include-dirs") // This is needed to avoid errors about missing include dirs in the chroot environment
 
 	compilerCommand := exec.Command(command, chrootarguments...)
 	compilerCommand.Stderr = &compilerStderrBuffer
