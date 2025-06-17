@@ -247,6 +247,9 @@ func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]
 
 	for _, key := range includefileKeys {
 		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
+			if strings.HasPrefix(dir, "./") || strings.HasPrefix(dir, "../") {
+				dir = pathAbs(invocation.cwd, dir)
+			}
 			return []string{key, dir}, true
 		}
 	}
