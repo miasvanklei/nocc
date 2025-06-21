@@ -191,5 +191,7 @@ func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) 
 
 func (remote *RemoteConnection) Clear() {
 	remote.compilationServiceClient = nil
-	remote.grpcClient.Clear()
+	if remote.grpcClient != nil {
+		remote.grpcClient.Clear()
+	}
 }
