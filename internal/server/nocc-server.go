@@ -189,7 +189,6 @@ func (s *NoccServer) UploadFileStream(stream pb.CompilationService_UploadFileStr
 			logServer.Error("unauthenticated client on upload stream", "clientID", firstChunk.ClientID)
 			return status.Errorf(codes.Unauthenticated, "client %s not found", firstChunk.ClientID)
 		}
-		client.lastSeen = time.Now()
 
 		session := client.GetSession(firstChunk.SessionID)
 		if session == nil || firstChunk.FileIndex >= uint32(len(session.files)) {
@@ -257,8 +256,6 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 			return nil
 
 		case session := <-client.chanReadySessions:
-			client.lastSeen = time.Now()
-
 			if session.compilerExitCode != 0 {
 				err := sendFailureMessage(stream, session)
 				if err != nil {
@@ -277,6 +274,17 @@ func (s *NoccServer) RecvCompiledObjStream(in *pb.OpenReceiveStreamRequest, stre
 			// start waiting for the next ready session
 		}
 	}
+}
+
+func (s *NoccServer) KeepAlive(_ context.Context, in *pb.KeepAliveRequest) (*pb.KeepAliveReply, error) {
+	client := s.ActiveClients.GetClient(in.ClientID)
+	if client == nil {
+		logServer.Error("unauthenticated client on keepalive", "clientID", in.ClientID)
+		return nil, status.Errorf(codes.Unauthenticated, "client %s not found", in.ClientID)
+	}
+
+	client.lastSeen = time.Now()
+	return &pb.KeepAliveReply{}, nil
 }
 
 // StopClient is a grpc handler. See StartClient for comments.

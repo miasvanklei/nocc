@@ -178,6 +178,21 @@ func (remote *RemoteConnection) WaitForCompiledObj(invocation *Invocation) (exit
 	return invocation.compilerExitCode, invocation.compilerStdout, invocation.compilerStderr, invocation.err
 }
 
+func (remote *RemoteConnection) KeepAlive(ctxSmallTimeout context.Context) {
+	if remote.isUnavailable.Load() {
+		return
+	}
+
+	_, err := remote.compilationServiceClient.KeepAlive(ctxSmallTimeout, &pb.KeepAliveRequest{
+		ClientID: remote.clientID,
+	})
+
+	if err != nil {
+		logClient.Error("keep alive failed:", err)
+		remote.OnRemoteBecameUnavailable(err)
+	}
+}
+
 func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) {
 	if remote.isUnavailable.Load() {
 		return

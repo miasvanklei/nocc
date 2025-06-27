@@ -131,6 +131,14 @@ func (daemon *Daemon) ServeUntilNobodyAlive() {
 	daemon.listener.EnterInfiniteLoopUntilQuit(daemon)
 }
 
+func (daemon *Daemon) KeepAlive() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for _, remote := range daemon.remoteConnections {
+		remote.KeepAlive(ctx)
+	}
+}
+
 func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 	logClient.Info(0, "daemon quit:", reason)
 

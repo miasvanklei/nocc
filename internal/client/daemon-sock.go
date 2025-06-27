@@ -86,7 +86,9 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 			nActive := listener.activeConnections.Load()
 			if nActive == 0 && time.Since(listener.lastTimeAlive) > daemon.connectionTimeout {
 				daemon.QuitDaemonGracefully("no connections receiving anymore")
+				return
 			}
+			daemon.KeepAlive() // notify nocc-server that we are still alive
 		}
 	}
 }

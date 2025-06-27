@@ -7,6 +7,7 @@ package nocc;
 
 service CompilationService {
     rpc StartClient(StartClientRequest) returns (StartClientReply) {}
+    rpc KeepAlive(KeepAliveRequest) returns (KeepAliveReply) {}
     rpc StartCompilationSession(StartCompilationSessionRequest) returns (StartCompilationSessionReply) {}
     rpc UploadFileStream(stream UploadFileChunkRequest) returns (stream UploadFileReply) {}
     rpc RecvCompiledObjStream(OpenReceiveStreamRequest) returns (stream RecvCompiledObjChunkReply) {}
@@ -28,6 +29,13 @@ message StartClientRequest {
 }
 
 message StartClientReply {
+}
+
+message KeepAliveRequest {
+    string ClientID = 1;
+}
+
+message KeepAliveReply {
 }
 
 message StartCompilationSessionRequest {
