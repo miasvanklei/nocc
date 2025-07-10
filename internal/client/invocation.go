@@ -237,7 +237,7 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]string, bool) {
 	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
-	includefileKeys := []string{"-include", "-include-pch"}
+	includefileKeys := []string{"-include-pch", "-include"}
 
 	for _, key := range includefolderKeys {
 		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
