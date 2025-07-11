@@ -74,7 +74,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 				dest.fileSize = stat.Size()
 				dest.fileSHA256, _, err = common.CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
 
-				return &dest, nil
+				return &dest, err
 			}
 		}
 
