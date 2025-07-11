@@ -20,6 +20,9 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 	stream, err := rc.compilationServiceClient.RecvCompiledObjStream(ctx,
 		&pb.OpenReceiveStreamRequest{ClientID: rc.clientID},
 	)
+
+	rc.creatingReceiveStream.Store(false)
+
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
 		return
@@ -69,7 +72,9 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 	logClient.Error("recreate recv stream:", err)
 	time.Sleep(100 * time.Millisecond)
 
-	go rc.CreateReceiveStream()
+	if !rc.creatingReceiveStream.Swap(true) {
+		go rc.CreateReceiveStream()
+	}
 }
 
 // monitorRemoteStreamForObjReceiving listens to a grpc receiving stream and handles .o files sent by a remote.

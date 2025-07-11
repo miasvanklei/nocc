@@ -24,10 +24,12 @@ type RemoteConnection struct {
 	remoteHostPort string
 	remoteHost     string // for console output and logs, just IP is more pretty
 	isUnavailable  atomic.Bool
+	creatingUploadStream atomic.Bool
+	creatingReceiveStream atomic.Bool
 
 	grpcClient               *GRPCClient
 	compilationServiceClient pb.CompilationServiceClient
-	findInvocation func(uint32) *Invocation
+	findInvocation           func(uint32) *Invocation
 
 	clientID     string // = Daemon.clientID
 	hostUserName string // = Daemon.hostUserName
@@ -43,13 +45,13 @@ func ExtractRemoteHostWithoutPort(remoteHostPort string) (remoteHost string) {
 
 func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr string) *RemoteConnection {
 	remote := &RemoteConnection{
-		quitDaemonChan:           daemon.quitDaemonChan,
-		socksProxyAddr:           socksProxyAddr,
-		remoteHostPort:           remoteHostPort,
-		remoteHost:               ExtractRemoteHostWithoutPort(remoteHostPort),
-		clientID:                 daemon.clientID,
-		chanToUpload:             make(chan fileUploadReq, 50),
-		findInvocation:           daemon.FindInvocationBySessionID,
+		quitDaemonChan: daemon.quitDaemonChan,
+		socksProxyAddr: socksProxyAddr,
+		remoteHostPort: remoteHostPort,
+		remoteHost:     ExtractRemoteHostWithoutPort(remoteHostPort),
+		clientID:       daemon.clientID,
+		chanToUpload:   make(chan fileUploadReq, 50),
+		findInvocation: daemon.FindInvocationBySessionID,
 	}
 
 	return remote
@@ -72,10 +74,22 @@ func StartClientRequest(csc pb.CompilationServiceClient, clientID string) error 
 }
 
 func (remote *RemoteConnection) OnRemoteBecameUnavailable(reason error) {
-	if !remote.isUnavailable.Swap(true) {
+	isCreatingReceiveStream := remote.creatingReceiveStream.Swap(true)
+	isCreatingUploadStream := remote.creatingUploadStream.Swap(true)
+
+	if !isCreatingReceiveStream && !isCreatingUploadStream && remote.isUnavailable.Swap(true) {
 		logClient.Error("remote", remote.remoteHostPort, "became unavailable:", reason)
 		remote.Clear()
 		go remote.reconnectRemote()
+		return
+	}
+
+	if !isCreatingReceiveStream {
+		remote.creatingReceiveStream.Store(false)
+	}
+
+	if !isCreatingUploadStream {
+		remote.creatingUploadStream.Store(false)
 	}
 }
 
@@ -86,7 +100,7 @@ func (remote *RemoteConnection) reconnectRemote() {
 		case <-remote.quitDaemonChan:
 			return
 
-		case <- timeout:
+		case <-timeout:
 			err := remote.SetupConnection()
 			if err == nil {
 				remote.isUnavailable.Store(false)

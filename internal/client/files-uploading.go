@@ -24,6 +24,9 @@ func (rc *RemoteConnection) CreateUploadStream() {
 	defer cancelFunc()
 
 	stream, err :=  rc.compilationServiceClient.UploadFileStream(ctx)
+
+	rc.creatingUploadStream.Store(false)
+
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
 		return
@@ -54,7 +57,9 @@ func (rc *RemoteConnection) CreateUploadStream() {
 		logClient.Error("recreate upload stream:", err)
 		time.Sleep(100 * time.Millisecond)
 
-		go rc.CreateUploadStream()
+		if !rc.creatingUploadStream.Swap(true) {
+			go rc.CreateUploadStream()
+		}
 
 		// theoretically, we could implement retries: if something does wrong with the network,
 		// then retry uploading (by pushing req to fu.chanToUpload)
