@@ -42,6 +42,7 @@ type Invocation struct {
 	objOutFile   string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	compilerName string      // g++ / clang / etc.
 	compilerArgs []string    // args like -Wall, -fpch-preprocess, -I{dir} and many more
+	fOptionFiles map[string]string // -frandomize-layout-seed-file={file} and others
 	depsFlags    DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
@@ -134,6 +135,10 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				continue
 			} else if args, ok := invocation.parseIncludeArgs(cmdLine, &i); ok {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
+				continue
+			} else if args, ok := invocation.parseFOption(cmdLine, &i); ok {
+				invocation.compilerArgs = append(invocation.compilerArgs, args...)
+				invocation.fOptionFiles[args[0]] = args[1]
 				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
@@ -235,6 +240,18 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 	return false
 }
 
+func (invocation *Invocation) parseFOption(args []string, argIndex *int) ([]string, bool) {
+	fOptions := []string{"-frandomize-layout-seed-file="}
+
+	for _, key := range fOptions {
+		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
+			return []string{key, pathAbs(invocation.cwd, dir)}, true
+		}
+	}
+
+	return nil, false
+}
+
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]string, bool) {
 	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
 	includefileKeys := []string{"-include-pch", "-include"}
@@ -302,6 +319,7 @@ func CreateInvocation(req DaemonSockRequest) *Invocation {
 		cwd:          req.Cwd,
 		compilerName: req.Compiler,
 		compilerArgs: make([]string, 0, len(req.CmdLine)),
+		fOptionFiles: make(map[string]string, 1),
 		summary:      MakeInvocationSummary(),
 	}
 

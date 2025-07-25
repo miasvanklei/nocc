@@ -38,7 +38,7 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // Since compiler knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
-func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
+func CollectDependentIncludes(invocation *Invocation) (requiredFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
 	compilerCmdLine := make([]string, 0, len(invocation.compilerArgs)+4)
 	compilerCmdLine = append(compilerCmdLine, invocation.compilerArgs...)
 	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", invocation.cppInFile)
@@ -60,25 +60,11 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
 	// We also need size and sha256 for every dependency: we'll use them to check whether they were already uploaded.
 	hFilesNames := extractIncludesFromCompilerMStdout(compilerStdout, invocation.cppInFile)
-	hFiles = make([]*IncludedFile, 0, len(hFilesNames))
+	requiredFiles = make([]*IncludedFile, 0, len(hFilesNames))
 	preallocatedBuf := make([]byte, 32*1024)
 
 	fillSizeAndMTime := func(fileName string) (*IncludedFile, error) {
-		file, err := os.Open(fileName)
-		if err == nil {
-			defer file.Close()
-			var stat os.FileInfo
-			stat, err = file.Stat()
-			if err == nil {
-				dest := IncludedFile{fileName: fileName}
-				dest.fileSize = stat.Size()
-				dest.fileSHA256, _, err = common.CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
-
-				return &dest, err
-			}
-		}
-
-		return nil, err
+		return createIncludedFileWithBuffer(fileName, preallocatedBuf)
 	}
 
 	addHFile := func(hFileName string, searchForPch bool) error {
@@ -91,7 +77,7 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 		if err != nil {
 			return err
 		}
-		hFiles = append(hFiles, hFile)
+		requiredFiles = append(requiredFiles, hFile)
 		return nil
 	}
 
@@ -105,6 +91,29 @@ func CollectDependentIncludes(invocation *Invocation) (hFiles []*IncludedFile, c
 
 	cppFile, err = fillSizeAndMTime(invocation.cppInFile)
 	return
+}
+
+func CreateIncludedFile(fileName string) (*IncludedFile, error) {
+	preallocatedBuf := make([]byte, 32*1024)
+	return createIncludedFileWithBuffer(fileName, preallocatedBuf)
+}
+
+func createIncludedFileWithBuffer(fileName string, preallocatedBuf []byte) (*IncludedFile, error) {
+	file, err := os.Open(fileName)
+	if err == nil {
+		defer file.Close()
+		var stat os.FileInfo
+		stat, err = file.Stat()
+		if err == nil {
+			dest := IncludedFile{fileName: fileName}
+			dest.fileSize = stat.Size()
+			dest.fileSHA256, _, err = common.CalcSHA256OfFile(file, dest.fileSize, preallocatedBuf)
+
+			return &dest, err
+		}
+	}
+
+	return nil, err
 }
 
 func extractIncludesFromCompilerMStdout(compilerMStdout []byte, cppInFile string) []string {

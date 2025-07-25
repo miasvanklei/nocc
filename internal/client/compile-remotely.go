@@ -18,6 +18,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("failed to collect dependencies: %v", err)
 	}
+
 	invocation.summary.nIncludes = len(hFiles)
 	invocation.summary.AddTiming("collected_includes")
 
@@ -25,11 +26,21 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	for _, hFile := range hFiles {
 		requiredFiles = append(requiredFiles, hFile.ToPbFileMetadata())
 	}
+
 	requiredFiles = append(requiredFiles, cppFile.ToPbFileMetadata())
+
 	var requiredPchFile *pb.FileMetadata
 	if pchFile != nil {
 		requiredPchFile = pchFile.ToPbFileMetadata()
 		requiredFiles = append(requiredFiles, requiredPchFile)
+	}
+
+	for fOption, fOptionFile := range invocation.fOptionFiles {
+		fileMeta, err := createIncludedFileWithBuffer(fOptionFile, nil)
+		if err != nil {
+			return 0, nil, nil, fmt.Errorf("failed to create file metadata for option %q for file %q: %v", fOption, fOptionFile, err)
+		}
+		requiredFiles = append(requiredFiles, fileMeta.ToPbFileMetadata())
 	}
 
 	// 2. Send sha256 of the .cpp and all dependencies to the remote.
@@ -68,7 +79,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 		logClient.Info(2, "saved obj file to", invocation.objOutFile)
 	}
 
-    // if compiler is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
+	// if compiler is launched with -MD/-MF flags, it generates a .o.d file (a dependency file with include list)
 	// we do it on a client side (moreover, they are stripped off compilerArgs and not sent to the remote)
 	// note, that .o.d file is generated ALONG WITH .o (like "a side effect of compilation")
 	if invocation.depsFlags.ShouldGenerateDepFile() {
