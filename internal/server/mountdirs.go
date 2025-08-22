@@ -5,54 +5,92 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 )
 
-type MountFolders struct {
-	folders []string
+type MountPaths struct {
+	paths   []string
 	options string
 }
 
-type RoMountFolders struct {
-	MountFolders
+type RoMountPaths struct {
+	MountPaths
 }
-type RwMountFolders struct {
-	MountFolders
+type RwMountPaths struct {
+	MountPaths
 }
 
-func makeRoMountDirs(mountDirs ...string) RoMountFolders {
-	mountFolders := makeMountDirs(mountDirs, "ro")
+func makeRoMountPaths(mountDirs ...string) RoMountPaths {
+	mountFolders := makeMountPaths(mountDirs, "ro")
 
-	return RoMountFolders {
+	return RoMountPaths{
 		mountFolders,
 	}
 }
 
-func makeRwMountDirs(mountDirs ...string) RwMountFolders {
-	mountFolders := makeMountDirs(mountDirs, "rw")
+func makeRwMountPaths(mountDirs ...string) RwMountPaths {
+	mountFolders := makeMountPaths(mountDirs, "rw")
 
-	return RwMountFolders {
+	return RwMountPaths{
 		mountFolders,
 	}
 }
 
-func makeMountDirs(mountDirs []string, options string) MountFolders {
-	return MountFolders{
-		folders: mountDirs,
+func makeMountPaths(mountDirs []string, options string) MountPaths {
+	return MountPaths{
+		paths:   mountDirs,
 		options: options,
 	}
 }
 
-func bindmountFolders(workingDir string, mountFolders MountFolders) error {
-	for _, folder := range mountFolders.folders {
-		mountDir := path.Join(workingDir, folder)
-		if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
-			return fmt.Errorf("can't create client working directory: %v", err)
+func BindmountPaths(workingDir string, mountPaths MountPaths) error {
+	mountedPaths := make([]string, 0)
+	var err error
+	var errorMessage string
+	for _, sourcePath := range mountPaths.paths {
+		targetPath := path.Join(workingDir, sourcePath)
+
+		if err = createMountDirectory(sourcePath, targetPath); err != nil {
+			errorMessage = fmt.Sprintf("failed to create mount directory %s: %v", targetPath, err)
+			break
 		}
-		if err := bindMount(folder, mountDir, mountFolders.options); err != nil {
-			return fmt.Errorf("failed to bind mount %s: %w", folder, err)
+
+		if err = bindMount(sourcePath, targetPath, mountPaths.options); err != nil {
+			errorMessage = fmt.Sprintf("failed to bind mount %s on %s: %v", sourcePath, targetPath, err)
+			break
 		}
+		mountedPaths = append(mountedPaths, sourcePath)
 	}
+
+	if err != nil {
+		logServer.Error(errorMessage)
+		unmountPaths(workingDir, mountedPaths)
+		return fmt.Errorf("%s", errorMessage)
+	}
+
 	return nil
+}
+
+func createMountDirectory(sourcePath string, targetPath string) error {
+	fileInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	if fileInfo.IsDir() {
+		return os.MkdirAll(targetPath, os.ModePerm)
+	}
+
+	targetDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	if f, err := os.Create(targetPath); err != nil {
+		return err
+	} else {
+		return f.Close()
+	}
 }
 
 func bindMount(source string, target string, option string) error {
@@ -63,13 +101,17 @@ func bindMount(source string, target string, option string) error {
 	return nil
 }
 
-func unmountFolders(workingDir string, mountFolders MountFolders) {
-	for _, folder := range mountFolders.folders {
-		mountDir := path.Join(workingDir, folder)
-		cmd := exec.Command("umount", mountDir)
+func UnmountPaths(workingDir string, mountPaths MountPaths) {
+	unmountPaths(workingDir, mountPaths.paths)
+}
+
+func unmountPaths(workingDir string, paths []string) {
+	for _, unmountPath := range paths {
+		targetPath := path.Join(workingDir, unmountPath)
+		cmd := exec.Command("umount", targetPath)
 		err := cmd.Run()
 		if err != nil {
-			logServer.Error("failed to unmount", mountDir, err)
+			logServer.Error("failed to unmount", targetPath, err)
 		}
 	}
 }

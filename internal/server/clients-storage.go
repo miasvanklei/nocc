@@ -23,22 +23,22 @@ type ClientsStorage struct {
 	table map[string]*Client
 	mu    sync.RWMutex
 
-	       romountDirs RoMountFolders
-       rwmountDirs RwMountFolders
-	clientsDir string // /tmp/nocc/cpp/clients
+	romountDirs RoMountPaths
+	rwmountDirs RwMountPaths
+	clientsDir  string // /tmp/nocc/cpp/clients
 
 	lastPurgeTime time.Time
 
 	uniqueRemotesList map[string]string
 }
 
-func MakeClientsStorage(clientsDir string, compilerDirs[] string, objcacheDir string) (*ClientsStorage, error) {
+func MakeClientsStorage(clientsDir string, compilerDirs []string, objcacheDir string) (*ClientsStorage, error) {
 	return &ClientsStorage{
 		table:             make(map[string]*Client, 1024),
 		clientsDir:        clientsDir,
 		uniqueRemotesList: make(map[string]string, 1),
-		romountDirs:       makeRoMountDirs(append(defaultMappedFolders, compilerDirs...)...),
-		rwmountDirs:       makeRwMountDirs(objcacheDir),
+		romountDirs:       makeRoMountPaths(append(defaultMappedFolders, compilerDirs...)...),
+		rwmountDirs:       makeRwMountPaths(objcacheDir),
 	}, nil
 }
 
@@ -68,10 +68,10 @@ func (allClients *ClientsStorage) OnClientConnected(clientID string) (*Client, e
 		return nil, fmt.Errorf("can't create client working directory: %v", err)
 	}
 
-	if err := bindmountFolders(workingDir, allClients.romountDirs.MountFolders); err != nil {
+	if err := BindmountPaths(workingDir, allClients.romountDirs.MountPaths); err != nil {
 		return nil, err
 	}
-	if err := bindmountFolders(workingDir, allClients.rwmountDirs.MountFolders); err != nil {
+	if err := BindmountPaths(workingDir, allClients.rwmountDirs.MountPaths); err != nil {
 		return nil, err
 	}
 
@@ -98,8 +98,8 @@ func (allClients *ClientsStorage) DeleteClient(client *Client) {
 	allClients.mu.Unlock()
 
 	workingDir := path.Join(allClients.clientsDir, client.clientID)
-	unmountFolders(workingDir, allClients.romountDirs.MountFolders)
-	unmountFolders(workingDir, allClients.rwmountDirs.MountFolders)
+	UnmountPaths(workingDir, allClients.romountDirs.MountPaths)
+	UnmountPaths(workingDir, allClients.rwmountDirs.MountPaths)
 
 	close(client.chanDisconnected)
 	// don't close chanReadySessions intentionally, it's not a leak
