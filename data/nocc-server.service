@@ -2,8 +2,13 @@
 Description=Nocc: A Distributed Compilation Server
 After=network.target
 
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
 [Service]
 ExecStart=/usr/bin/nocc-server
+Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
