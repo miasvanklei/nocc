@@ -69,7 +69,7 @@ func main() {
 
 	s := &server.NoccServer{}
 
-	s.ActiveClients, err = server.MakeClientsStorage(prepareEmptyDir(configuration.SrcCacheDir, "clients"), configuration.CompilerDirs, configuration.ObjCacheDir)
+	s.ActiveClients, err = server.MakeClientsStorage(configuration.CompilerDirs, configuration.SrcCacheDir, configuration.ObjCacheDir)
 	if err != nil {
 		failedStart("Failed to init clients hashtable", err)
 	}

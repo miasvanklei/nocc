@@ -23,23 +23,29 @@ type ClientsStorage struct {
 	table map[string]*Client
 	mu    sync.RWMutex
 
-	romountDirs RoMountPaths
-	rwmountDirs RwMountPaths
-	clientsDir  string // /tmp/nocc/cpp/clients
+	romountPaths RoMountPaths
+	rwmountPaths RwMountPaths
+	clientsDir   string // /tmp/nocc/cpp/clients
 
 	lastPurgeTime time.Time
 
 	uniqueRemotesList map[string]string
 }
 
-func MakeClientsStorage(clientsDir string, compilerDirs []string, objcacheDir string) (*ClientsStorage, error) {
-	return &ClientsStorage{
+func MakeClientsStorage(compilerDirs []string, srccacheDir string, objcacheDir string) (*ClientsStorage, error) {
+	clientStorage := &ClientsStorage{
 		table:             make(map[string]*Client, 1024),
-		clientsDir:        clientsDir,
+		clientsDir:        path.Join(srccacheDir, "clients"),
 		uniqueRemotesList: make(map[string]string, 1),
-		romountDirs:       makeRoMountPaths(append(defaultMappedFolders, compilerDirs...)...),
-		rwmountDirs:       makeRwMountPaths(objcacheDir),
-	}, nil
+		romountPaths:      makeRoMountPaths(append(defaultMappedFolders, compilerDirs...)...),
+		rwmountPaths:      makeRwMountPaths(objcacheDir),
+	}
+
+	if err := clientStorage.prepareEmptyDir(); err != nil {
+		return nil, err
+	}
+
+	return clientStorage, nil
 }
 
 func (allClients *ClientsStorage) GetClient(clientID string) *Client {
@@ -68,10 +74,10 @@ func (allClients *ClientsStorage) OnClientConnected(clientID string) (*Client, e
 		return nil, fmt.Errorf("can't create client working directory: %v", err)
 	}
 
-	if err := BindmountPaths(workingDir, allClients.romountDirs.MountPaths); err != nil {
+	if err := BindmountPaths(workingDir, allClients.romountPaths.MountPaths); err != nil {
 		return nil, err
 	}
-	if err := BindmountPaths(workingDir, allClients.rwmountDirs.MountPaths); err != nil {
+	if err := BindmountPaths(workingDir, allClients.rwmountPaths.MountPaths); err != nil {
 		return nil, err
 	}
 
@@ -92,14 +98,39 @@ func (allClients *ClientsStorage) OnClientConnected(clientID string) (*Client, e
 	return client, nil
 }
 
+func (allClients *ClientsStorage) prepareEmptyDir() error {
+	if _, err := os.Stat(allClients.clientsDir); err == nil {
+		entries, err := os.ReadDir(allClients.clientsDir)
+		if err != nil {
+			return err
+		}
+
+		for _, e := range entries {
+			allClients.CleanupMounts(e.Name())
+		}
+
+		_ = os.RemoveAll(allClients.clientsDir)
+	}
+
+	if err := os.MkdirAll(allClients.clientsDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (allClients *ClientsStorage) CleanupMounts(clientID string) {
+	workingDir := path.Join(allClients.clientsDir, clientID)
+	UnmountPaths(workingDir, allClients.romountPaths.MountPaths)
+	UnmountPaths(workingDir, allClients.rwmountPaths.MountPaths)
+}
+
 func (allClients *ClientsStorage) DeleteClient(client *Client) {
 	allClients.mu.Lock()
 	delete(allClients.table, client.clientID)
 	allClients.mu.Unlock()
 
-	workingDir := path.Join(allClients.clientsDir, client.clientID)
-	UnmountPaths(workingDir, allClients.romountDirs.MountPaths)
-	UnmountPaths(workingDir, allClients.rwmountDirs.MountPaths)
+	allClients.CleanupMounts(client.clientID)
 
 	close(client.chanDisconnected)
 	// don't close chanReadySessions intentionally, it's not a leak
