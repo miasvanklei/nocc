@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"runtime"
 	"time"
 
 	"nocc/internal/common"
@@ -96,12 +97,14 @@ func main() {
 	if err != nil {
 		failedStart("Failed to init cron", err)
 	}
+	go s.Cron.StartCron()
 
-	listener, err := s.StartGRPCListening(configuration.ListenAddr)
+	fmt.Fprintln(os.Stdout, "nocc-server %s started successfully. num cpu: %d", common.GetVersion(), runtime.NumCPU())
+
+	err = s.StartGRPCListening(configuration.ListenAddr)
 	if err != nil {
 		failedStart("Failed to listen", err)
 	}
 
 	s.GRPCServer.Stop()
-	_ = listener.Close()
 }

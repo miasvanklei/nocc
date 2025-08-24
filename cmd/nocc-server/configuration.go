@@ -7,7 +7,7 @@ import (
 )
 
 type Configuration struct {
-	ListenAddr        string
+	ListenAddr        []string
 	CompilerQueueSize int
 	LogFileName       string
 	LogLevel          int
@@ -20,7 +20,7 @@ type Configuration struct {
 
 func ParseConfiguration(filePath string) (*Configuration, error) {
 	config := Configuration{
-		ListenAddr:        "localhost:43210",
+		ListenAddr:        []string{"localhost:43210"},
 		CompilerQueueSize: runtime.NumCPU(),
 		LogFileName:       "stderr",
 		LogLevel:          0,

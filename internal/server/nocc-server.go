@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"net"
 	"path"
-	"runtime"
 	"strconv"
-	"syscall"
+	"strings"
 	"time"
 
-	"nocc/internal/common"
 	"nocc/pb"
 
 	"google.golang.org/grpc"
@@ -42,23 +40,40 @@ func launchCompilerOnServerOnReadySessions(noccServer *NoccServer, client *Clien
 	}
 }
 
-// StartGRPCListening is an entrypoint called from main() of nocc-server.
-// It either returns an error or starts processing grpc requests and never ends.
-func (s *NoccServer) StartGRPCListening(listenAddr string) (net.Listener, error) {
-	listener, err := net.Listen("tcp", listenAddr)
-	if err != nil {
-		return nil, err
+func (s *NoccServer) StartGRPCListening(listenAddrs []string) error {
+	errs := make(chan error, len(listenAddrs))
+	for _, addr := range listenAddrs {
+		go func(addr string) {
+			parts := strings.Split(addr, "://")
+			if len(parts) != 2 {
+				errs <- fmt.Errorf("invalid listen address: %s", addr)
+				return
+			}
+			listener, err := net.Listen(parts[0], parts[1])
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			logServer.Info(0, "listening on", addr)
+
+			err = s.GRPCServer.Serve(listener)
+			if err != nil {
+				errs <- fmt.Errorf("failed to start grpc listener %s: %w", addr, err)
+			}
+			errs <- nil
+		}(addr)
 	}
 
-	go s.Cron.StartCron()
+	for range listenAddrs {
+		err := <-errs
+		if err != nil {
+			logServer.Error(err)
+			return err
+		}
+    }
 
-	logServer.Info(0, "nocc-server started")
-
-	var rLimit syscall.Rlimit
-	_ = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	logServer.Info(0, "env:", "listenAddr", listenAddr, "; ulimit -n", rLimit.Cur, "; num cpu", runtime.NumCPU(), "; version", common.GetVersion())
-
-	return listener, s.GRPCServer.Serve(listener)
+	return nil
 }
 
 // QuitServerGracefully closes all active clients and stops accepting new connections.

@@ -57,6 +57,8 @@ func (c *Cron) doCron() {
 }
 
 func (c *Cron) StartCron() {
+	var rLimit syscall.Rlimit
+	_ = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	c.signals = make(chan os.Signal, 2)
 	signal.Notify(c.signals, syscall.SIGUSR1, syscall.SIGTERM)
 	c.doCron()

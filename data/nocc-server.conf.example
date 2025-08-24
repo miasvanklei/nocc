@@ -1,4 +1,7 @@
-ListenAddr = "localhost:43210"
+ListenAddr = [
+    "tcp4://localhost:43210",
+    "tcp6://localhost:43210"
+]
 CompilerQueueSize = 1
 LogFileName = /var/log/nocc-server.log 
 LogLevel = 1 
