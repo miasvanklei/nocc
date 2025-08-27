@@ -168,6 +168,7 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 	objCacheKey = common.SHA256{}
 	objCacheKey.FromLongHexString(pchInvocation.Hash)
 	if pathInObjCache := objFileCache.LookupInCache(objCacheKey); len(pathInObjCache) != 0 {
+		logServer.Info(0, "pch already compiled", clientOutputFile, "sessionID", session.sessionID)
 		return os.Link(pathInObjCache, clientOutputFile)
 	}
 
