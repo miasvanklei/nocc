@@ -37,13 +37,13 @@ type Invocation struct {
 	cwd string // working directory, where nocc was launched
 
 	// cmdLine is parsed to the following fields:
-	hascOption   bool        // -c
-	cppInFile    string      // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
-	objOutFile   string      // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
-	compilerName string      // g++ / clang / etc.
-	compilerArgs []string    // args like -Wall, -fpch-preprocess, -I{dir} and many more
+	hascOption   bool              // -c
+	cppInFile    string            // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
+	objOutFile   string            // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
+	compilerName string            // g++ / clang / etc.
+	compilerArgs []string          // args like -Wall, -fpch-preprocess, -I{dir} and many more
 	fOptionFiles map[string]string // -frandomize-layout-seed-file={file} and others
-	depsFlags    DepCmdFlags // -MD -MF file and others, used for .d files generation (not passed to server)
+	depsFlags    DepCmdFlags       // -MD -MF file and others, used for .d files generation (not passed to server)
 
 	waitUploads atomic.Int32 // files still waiting for upload to finish; 0 releases wgUpload; see Invocation.DoneUploadFile
 	doneRecv    atomic.Int32 // 1 if o file received or failed receiving; 1 releases wgRecv; see Invocation.DoneRecvObj
@@ -127,16 +127,16 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			if arg == "-c" {
 				invocation.hascOption = true
 				continue
-			} else if oFile, ok := invocation.parseArgFile(cmdLine, "-o", &i); ok {
-				if oFile == "/dev/null" {
+			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-o", &i); parseFileResult != nil {
+				if parseFileResult.value == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
-				invocation.objOutFile = pathAbs(invocation.cwd, oFile)
+				invocation.objOutFile = pathAbs(invocation.cwd, parseFileResult.value)
 				continue
-			} else if args, ok := invocation.parseIncludeArgs(cmdLine, &i); ok {
+			} else if args := invocation.parseIncludeArgs(cmdLine, &i); args != nil {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
 				continue
-			} else if args, ok := invocation.parseFOption(cmdLine, &i); ok {
+			} else if args := invocation.parseFOption(cmdLine, &i); args != nil {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
 				invocation.fOptionFiles[args[0]] = args[1]
 				continue
@@ -151,14 +151,14 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-I-" || arg == "-E" {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if mfFile, ok := invocation.parseArgFile(cmdLine, "-MF", &i); ok {
-				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-MF", &i); parseFileResult != nil {
+				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
 				continue
-			} else if strArg, ok := invocation.parseArgFile(cmdLine, "-MT", &i); ok {
-				invocation.depsFlags.SetCmdFlagMT(strArg)
+			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-MT", &i); parseFileResult != nil {
+				invocation.depsFlags.SetCmdFlagMT(parseFileResult.value)
 				continue
-			} else if strArg, ok := invocation.parseArgFile(cmdLine, "-MQ", &i); ok {
-				invocation.depsFlags.SetCmdFlagMQ(strArg)
+			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-MQ", &i); parseFileResult != nil {
+				invocation.depsFlags.SetCmdFlagMQ(parseFileResult.value)
 				continue
 			} else if arg == "-MD" {
 				invocation.depsFlags.SetCmdFlagMD()
@@ -173,14 +173,6 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				// these dep flags are unsupported yet, cmake doesn't use them
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
-			} else if arg == "-Xclang" && i < len(cmdLine)-1 { // "-Xclang {xArg}" — leave as is, unless we need to parse arg
-				xArg := cmdLine[i+1]
-				if xArg == "-I" || xArg == "-iquote" || xArg == "-isystem" || xArg == "-include" || xArg == "-include-pch" {
-					continue // like "-Xclang" doesn't exist
-				}
-				invocation.compilerArgs = append(invocation.compilerArgs, arg, xArg)
-				i++
-				continue
 			} else if arg == "-march=native" {
 				invocation.err = fmt.Errorf("-march=native can't be launched remotely")
 				return
@@ -227,54 +219,62 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 }
 
 func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int) bool {
-	if mfFile, ok := invocation.parseArgFile(args, "-MD", argIndex); ok {
+	if parseFileResult := invocation.parseArgFile(args, "-MD", argIndex); parseFileResult != nil {
 		invocation.depsFlags.SetCmdFlagMD()
-		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
 		return true
-	} else if mfFile, ok := invocation.parseArgFile(args, "-MMD", argIndex); ok {
+	} else if parseFileResult := invocation.parseArgFile(args, "-MMD", argIndex); parseFileResult != nil {
 		invocation.depsFlags.SetCmdFlagMMD()
-		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, mfFile))
+		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
 		return true
 	}
 
 	return false
 }
 
-func (invocation *Invocation) parseFOption(args []string, argIndex *int) ([]string, bool) {
+func (invocation *Invocation) parseFOption(args []string, argIndex *int) []string {
 	fOptions := []string{"-frandomize-layout-seed-file="}
 
 	for _, key := range fOptions {
-		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
-			return []string{key, pathAbs(invocation.cwd, dir)}, true
+		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
+			return append(parseFileResult.args, pathAbs(invocation.cwd, parseFileResult.value))
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
-func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) ([]string, bool) {
+func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []string {
 	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
 	includefileKeys := []string{"-include-pch", "-include"}
 
 	for _, key := range includefolderKeys {
-		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
-			return []string{key, pathAbs(invocation.cwd, dir)}, true
+		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
+			dir := pathAbs(invocation.cwd, parseFileResult.value)
+			return append(parseFileResult.args, dir)
 		}
 	}
 
 	for _, key := range includefileKeys {
-		if dir, ok := invocation.parseArgFile(args, key, argIndex); ok {
+		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
+			dir := parseFileResult.value
 			if strings.HasPrefix(dir, "./") || strings.HasPrefix(dir, "../") {
 				dir = pathAbs(invocation.cwd, dir)
 			}
-			return []string{key, dir}, true
+
+			return append(parseFileResult.args, dir)
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
-func (invocation *Invocation) parseArgFile(args []string, key string, argIndex *int) (string, bool) {
+type parseFileResult struct {
+	args  []string
+	value string
+}
+
+func (invocation *Invocation) parseArgFile(args []string, key string, argIndex *int) *parseFileResult {
 	arg := args[*argIndex]
 
 	if arg == key {
@@ -282,17 +282,18 @@ func (invocation *Invocation) parseArgFile(args []string, key string, argIndex *
 			*argIndex++
 			if args[*argIndex] == "-Xclang" { // -Xclang -include -Xclang {file}
 				*argIndex++
+				return &parseFileResult{args: []string{key, "-Xclang"}, value: args[*argIndex]}
 			}
-			return args[*argIndex], true
+			return &parseFileResult{args: []string{key}, value: args[*argIndex]}
 		} else {
 			invocation.err = fmt.Errorf("unsupported command-line: no argument after %s", arg)
-			return "", false
+			return nil
 		}
 	} else if strings.HasPrefix(arg, key) {
-		return arg[len(key):], true
+		return &parseFileResult{args: []string{key}, value: arg[len(key):]}
 	}
 
-	return "", false
+	return nil
 }
 
 func determineLocalCompiling(invocation *Invocation, arg string) {
