@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// SrcFileCache is a /tmp/nocc/cpp/src-cache directory, where uploaded .cpp/.h/etc. files are saved.
+// SrcFileCache is a ${SrcCacheDir}/cpp/src-cache directory, where uploaded .cpp/.h/etc. files are saved.
 // It's supposed that sha256 uniquely identifies the file, that's why a map key doesn't contain size/mtime.
 // It's useful to share files across clients (if one client has uploaded a file, the second takes it from cache).
 // Also, it helps reuse files across the same client after it was considered inactive and deleted, but launched again.

@@ -25,7 +25,7 @@ type ClientsStorage struct {
 
 	romountPaths RoMountPaths
 	rwmountPaths RwMountPaths
-	clientsDir   string // /tmp/nocc/cpp/clients
+	clientsDir   string // ${SrcCacheDir}/clients
 
 	lastPurgeTime time.Time
 

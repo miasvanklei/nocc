@@ -24,10 +24,10 @@ func ParseConfiguration(filePath string) (*Configuration, error) {
 		CompilerQueueSize: runtime.NumCPU(),
 		LogFileName:       "stderr",
 		LogLevel:          0,
-		SrcCacheDir:       "/tmp/nocc/cpp",
-		ObjCacheDir:       "/tmp/nocc/obj",
-		SrcCacheSize:      4 * 1024 * 1024 * 1024,
-		ObjCacheSize:      16 * 1024 * 1024 * 1024,
+		SrcCacheDir:       "/var/tmp/nocc/cpp",
+		ObjCacheDir:       "/var/tmp/nocc/obj",
+		SrcCacheSize:      8 * 1024 * 1024 * 1024,
+		ObjCacheSize:      4 * 1024 * 1024 * 1024,
 	}
 	if _, err := toml.DecodeFile(filePath, &config); err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ import (
 	"nocc/internal/common"
 )
 
-// ObjFileCache is a /tmp/nocc/obj/obj-cache directory, where the resulting .o files are saved.
+// ObjFileCache is a ${ObjCacheDir}/obj-cache directory, where the resulting .o files are saved.
 // Its purpose is to reuse a ready .o file if the same .cpp is requested to be compiled again.
 // This is especially useful to share .o files across build agents:
 // if one build agent compiles the master branch, other build agents can reuse ready .o for every .cpp.
@@ -18,7 +18,7 @@ import (
 type ObjFileCache struct {
 	*FileCache
 
-	// next to obj-cache, there is a /tmp/nocc/obj/compiler-out directory (session.objOutFile point here)
+	// next to obj-cache, there is a ${ObjCacheDir}/obj/compiler-out directory (session.objOutFile point here)
 	// after being compiled, files from here are hard linked to obj-cache
 	objTmpDir string
 }
@@ -44,7 +44,7 @@ func MakeObjFileCache(cacheDir string, objTmpDir string, limitBytes int64) (*Obj
 // * all compiler options are the same
 //
 // The problem is with the last point. compilerCmdLine contains -I and other options that vary between clients:
-// > -iquote /tmp/nocc/cpp/clients/{clientID}/home/{username}/proj -I /tmp/gch/{random_hash} -o ...{random_int}.o
+// > -iquote ${SrcCachDir}/clients/{clientID}/home/{username}/proj -I /tmp/gch/{random_hash} -o ...{random_int}.o
 // These are different options, but in fact, they should be considered the same.
 // That's why we don't take include paths into account when calculating a hash from compilerCmdLine.
 // The assumption is: if all deps are equal, their actual paths/names don't matter.

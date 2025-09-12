@@ -22,7 +22,7 @@ type lruNode struct {
 }
 
 // FileCache is a base for ObjFileCache and SrcFileCache, see comments for them.
-// It's a directory stored somewhere in /tmp where files could be saved and retrieved back by sha256.
+// It's a directory stored somewhere in / where files could be saved and retrieved back by sha256.
 // It's limited in size by lru (when its size exceeds a limit, the oldest accessed file is deleted).
 // "Restoring from cache" is just a hard link to a new path.
 type FileCache struct {

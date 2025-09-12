@@ -24,7 +24,7 @@ type Session struct {
 	sessionID uint32
 
 	InputFile     string // as-is from a client cmd line (relative to compilerCwd on a server-side)
-	OutputFile    string // inside /tmp/nocc/obj/compiler-out, or directly in /tmp/nocc/obj/obj-cache if taken from cache
+	OutputFile    string // inside ${ObjCacheDir}/compiler-out, or directly in ${ObjCacheDir}/obj-cache if taken from cache
 	compilerName  string // g++ / clang / etc.
 	compilerArgs  []string // all args for the compiler, including -I/-isystem/-L
 

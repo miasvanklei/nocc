@@ -23,9 +23,9 @@ func failedStart(message string, err error) {
 // it's executed on server launch
 // as a consequence, all file caches are lost on restart
 func prepareEmptyDir(parentDir string, subdir string) string {
-	// if /tmp/nocc/cpp/src-cache already exists, it means, that it contains files from a previous launch
+	// if ${SrcCacheDir} already exists, it means, that it contains files from a previous launch
 	// to start up as quickly as possible, do the following:
-	// 1) rename it to /tmp/nocc/cpp/src-cache.old
+	// 1) rename it to ${SrcCacheDir}/src-cache.old
 	// 2) clear it recursively in the background
 	serverDir := path.Join(parentDir, subdir)
 	if _, err := os.Stat(serverDir); err == nil {
@@ -99,7 +99,7 @@ func main() {
 	}
 	go s.Cron.StartCron()
 
-	fmt.Fprintln(os.Stdout, "nocc-server %s started successfully. num cpu: %d", common.GetVersion(), runtime.NumCPU())
+	fmt.Printf("nocc-server %s started successfully. num cpu: %d\n", common.GetVersion(), runtime.NumCPU())
 
 	err = s.StartGRPCListening(configuration.ListenAddr)
 	if err != nil {

@@ -34,8 +34,8 @@ All configuration on a server-side is done using a configuration file, located a
 | Configuration setting           | Description                                                                                                 |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------|
 | `ListenAddr        = {string}`  | Binding address, default localhost:43210                                                                    |
-| `SrcCacheDir       = {string}`  | Directory for incoming source/header files, default */tmp/nocc/cpp*.                                        |
-| `ObjCacheDir       = {string}`  | Directory for resulting obj files and obj cache, default */tmp/nocc/obj*.                                   |
+| `SrcCacheDir       = {string}`  | Directory for incoming source/header files, default */var/tmp/nocc/cpp*.                                        |
+| `ObjCacheDir       = {string}`  | Directory for resulting obj files and obj cache, default */var/tmp/nocc/obj*.                                   |
 | `LogFilename       = {string}`  | A filename to log, by default use stderr.                                                                   |
 | `LogLevel          = {int}`     | Logger verbosity level for INFO (-1 off, default 0, max 2). Errors are logged always.                       |
 | `SrcCacheSize      = {int}`     | Header and source cache limit, in bytes, default 4G.                                                        |

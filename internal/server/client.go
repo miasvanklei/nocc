@@ -27,7 +27,7 @@ const (
 // which are saved into a folder with relative paths equal to absolute client paths.
 //
 // For example, a client uploads 3 files: /home/alice/1.cpp, /home/alice/1.h, /usr/include/math.h.
-// They are saved to /tmp/nocc/cpp/clients/{clientID}/home/alice/1.cpp and so on.
+// They are saved to ${SrcCacheDir}/cpp/clients/{clientID}/home/alice/1.cpp and so on.
 // (if math.h is equal to a server system include /usr/include/math.h, it isn't requested to be uploaded).
 //
 // fileInClientDir also represents files in the process of uploading, before actually saved to a disk (state field).
@@ -50,7 +50,7 @@ type fileInClientDir struct {
 // Every client as a workingDir, where all files uploaded from that client are saved to.
 type Client struct {
 	clientID   string
-	workingDir string    // /tmp/nocc/cpp/clients/{clientID}
+	workingDir string    // ${SrcCacheDir}/cpp/clients/{clientID}
 	lastSeen   time.Time // to detect when a client becomes inactive
 
 	mu       sync.RWMutex
@@ -73,13 +73,13 @@ func (client *Client) makeNewFile(clientFileName string, fileSize int64, fileSHA
 }
 
 // MapClientFileNameToServerAbs converts a client file name to an absolute path on server.
-// For example, /proj/1.cpp maps to /tmp/nocc/cpp/clients/{clientID}/proj/1.cpp.
+// For example, /proj/1.cpp maps to ${SrcCacheDir}/cpp/clients/{clientID}/proj/1.cpp.
 func (client *Client) MapClientFileNameToServerAbs(clientFileName string) string {
 	return path.Join(client.workingDir, clientFileName)
 }
 
 // MapServerAbsToClientFileName converts an absolute path on server relatively to the client working dir.
-// For example, /tmp/nocc/cpp/clients/{clientID}/proj/1.cpp maps to /proj/1.cpp.
+// For example, ${SrcCacheDir}/cpp/clients/{clientID}/proj/1.cpp maps to /proj/1.cpp.
 // If serverFileName is /usr/local/include, it's left as is.
 func (client *Client) MapServerAbsToClientFileName(serverFileName string) string {
 	return strings.TrimPrefix(serverFileName, client.workingDir)
@@ -96,7 +96,7 @@ func (client *Client) CloseSession(session *Session) {
 	delete(client.sessions, session.sessionID)
 	client.mu.Unlock()
 
-	if !session.objCacheExists { // delete /tmp/nocc/obj/compiler-out/this.o (already hard linked to obj cache)
+	if !session.objCacheExists { // delete ${ObjCacheDir}/compiler-out/this.o (already hard linked to obj cache)
 		_ = os.Remove(session.OutputFile)
 	}
 	session.files = nil
@@ -165,7 +165,7 @@ func (client *Client) StartUsingFileInSession(clientFileName string, fileSize in
 // (they mirror client directory structure in client.workingDir).
 // Instead of calling os.MkdirAll for every uploaded or hard linked file, they are created in advance.
 // Moreover, we need to call os.MkdirAll only once for all files within it (when it appears first time).
-// After this call, every /home/file.h can be saved into /tmp/.../{clientID}/home/file.h.
+// After this call, every /home/file.h can be saved into ${SrcCacheDir}/.../{clientID}/home/file.h.
 func (client *Client) MkdirAllForSession(session *Session) {
 	dirsToCreate := make([]string, 0)
 
