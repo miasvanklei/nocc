@@ -44,6 +44,7 @@ func CollectDependentIncludes(invocation *Invocation) (requiredFiles []*Included
 	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", invocation.cppInFile)
 
 	localLaunch := LocalCompilerLaunch{
+		cwd:      invocation.cwd,
 		compiler: invocation.compilerName,
 		cmdLine:  compilerCmdLine,
 		uid:      invocation.uid,

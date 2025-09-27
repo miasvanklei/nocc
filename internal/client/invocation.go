@@ -257,12 +257,12 @@ func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []s
 
 	for _, key := range includefileKeys {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
-			dir := parseFileResult.value
-			if strings.HasPrefix(dir, "./") || strings.HasPrefix(dir, "../") {
-				dir = pathAbs(invocation.cwd, dir)
+			dir := pathAbs(invocation.cwd, parseFileResult.value)
+			if _, err := os.Stat(dir); err == nil {
+				return append(parseFileResult.args, dir)
 			}
 
-			return append(parseFileResult.args, dir)
+			return append(parseFileResult.args, parseFileResult.value)
 		}
 	}
 
