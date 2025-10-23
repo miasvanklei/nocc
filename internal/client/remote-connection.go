@@ -19,13 +19,12 @@ import (
 type RemoteConnection struct {
 	chanToUpload   chan fileUploadReq
 	quitDaemonChan chan int
+	reconnectChan  chan struct{}
 
 	socksProxyAddr string
 	remoteHostPort string
 	remoteHost     string // for console output and logs, just IP is more pretty
 	isUnavailable  atomic.Bool
-	creatingUploadStream atomic.Bool
-	creatingReceiveStream atomic.Bool
 
 	grpcClient               *GRPCClient
 	compilationServiceClient pb.CompilationServiceClient
@@ -74,22 +73,10 @@ func StartClientRequest(csc pb.CompilationServiceClient, clientID string) error 
 }
 
 func (remote *RemoteConnection) OnRemoteBecameUnavailable(reason error) {
-	isCreatingReceiveStream := remote.creatingReceiveStream.Swap(true)
-	isCreatingUploadStream := remote.creatingUploadStream.Swap(true)
-
-	if !isCreatingReceiveStream && !isCreatingUploadStream && remote.isUnavailable.Swap(true) {
+	if !remote.isUnavailable.Swap(true) {
+		close(remote.reconnectChan)
 		logClient.Error("remote", remote.remoteHostPort, "became unavailable:", reason)
-		remote.Clear()
 		go remote.reconnectRemote()
-		return
-	}
-
-	if !isCreatingReceiveStream {
-		remote.creatingReceiveStream.Store(false)
-	}
-
-	if !isCreatingUploadStream {
-		remote.creatingUploadStream.Store(false)
 	}
 }
 
@@ -113,6 +100,8 @@ func (remote *RemoteConnection) reconnectRemote() {
 }
 
 func (remote *RemoteConnection) SetupConnection() error {
+	remote.reconnectChan = make(chan struct{})
+
 	grpcClient, err := MakeGRPCClient(remote.remoteHostPort, remote.socksProxyAddr)
 	compilationServiceClient := pb.NewCompilationServiceClient(grpcClient.connection)
 	if err != nil {

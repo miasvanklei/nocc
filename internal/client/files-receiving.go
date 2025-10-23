@@ -21,8 +21,6 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 		&pb.OpenReceiveStreamRequest{ClientID: rc.clientID},
 	)
 
-	rc.creatingReceiveStream.Store(false)
-
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
 		return
@@ -38,6 +36,8 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 		// when a daemon stops listening, all streams are automatically closed
 		select {
 		case <-rc.quitDaemonChan:
+			return
+		case <-rc.reconnectChan:
 			return
 		default:
 			break
@@ -72,9 +72,7 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 	logClient.Error("recreate recv stream:", err)
 	time.Sleep(100 * time.Millisecond)
 
-	if !rc.creatingReceiveStream.Swap(true) {
-		go rc.CreateReceiveStream()
-	}
+	go rc.CreateReceiveStream()
 }
 
 // monitorRemoteStreamForObjReceiving listens to a grpc receiving stream and handles .o files sent by a remote.
@@ -84,6 +82,15 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 // See RemoteConnection.WaitForCompiledObj.
 func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.CompilationService_RecvCompiledObjStreamClient) (bool, error) {
 	for {
+		// when a daemon stops listening, all streams are automatically closed
+		select {
+		case <-rc.quitDaemonChan:
+			return false, nil
+		case <-rc.reconnectChan:
+			return false, nil
+		default:
+		}
+
 		firstChunk, err := stream.Recv()
 
 		if err != nil {

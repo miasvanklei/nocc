@@ -25,8 +25,6 @@ func (rc *RemoteConnection) CreateUploadStream() {
 
 	stream, err :=  rc.compilationServiceClient.UploadFileStream(ctx)
 
-	rc.creatingUploadStream.Store(false)
-
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
 		return
@@ -37,6 +35,8 @@ func (rc *RemoteConnection) CreateUploadStream() {
 		// when a daemon stops listening, all streams are automatically closed
 		select {
 		case <-rc.quitDaemonChan:
+			return
+		case <-rc.reconnectChan:
 			return
 		default:
 			break
@@ -57,9 +57,7 @@ func (rc *RemoteConnection) CreateUploadStream() {
 		logClient.Error("recreate upload stream:", err)
 		time.Sleep(100 * time.Millisecond)
 
-		if !rc.creatingUploadStream.Swap(true) {
-			go rc.CreateUploadStream()
-		}
+		go rc.CreateUploadStream()
 
 		// theoretically, we could implement retries: if something does wrong with the network,
 		// then retry uploading (by pushing req to fu.chanToUpload)
@@ -77,6 +75,8 @@ func (rc *RemoteConnection) monitorClientChanForFileUploading(stream pb.Compilat
 	for {
 		select {
 		case <-rc.quitDaemonChan:
+			return nil, nil
+		case <-rc.reconnectChan:
 			return nil, nil
 
 		case req := <-rc.chanToUpload:
