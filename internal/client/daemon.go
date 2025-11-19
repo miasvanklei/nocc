@@ -101,7 +101,7 @@ func (daemon *Daemon) ConnectToRemoteHosts() {
 		go func(index int, remoteHostPort string) {
 			remote := MakeRemoteConnection(daemon, remoteHostPort, daemon.socksProxyAddr)
 			daemon.remoteConnections[index] = remote
-			err := remote.SetupConnection()
+			err := remote.SetupConnection(true)
 
 			if err != nil {
 				remote.OnRemoteBecameUnavailable(err)

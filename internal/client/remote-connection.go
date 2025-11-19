@@ -76,30 +76,44 @@ func (remote *RemoteConnection) OnRemoteBecameUnavailable(reason error) {
 	if !remote.isUnavailable.Swap(true) {
 		close(remote.reconnectChan)
 		logClient.Error("remote", remote.remoteHostPort, "became unavailable:", reason)
-		go remote.reconnectRemote()
+		go remote.tryReconnectRemote()
 	}
 }
 
-func (remote *RemoteConnection) reconnectRemote() {
+func (remote *RemoteConnection) tryReconnectRemote() {
 	timeout := time.After(10 * time.Millisecond)
+	restarttimeout := time.After(5 * time.Minute)
+
 	for {
 		select {
 		case <-remote.quitDaemonChan:
 			return
-
-		case <-timeout:
-			err := remote.SetupConnection()
-			if err == nil {
-				remote.isUnavailable.Store(false)
+		case <-restarttimeout:
+			timeout = remote.reconnectRemote(true)
+			if timeout == nil {
 				return
 			}
-			timeout = time.After(10 * time.Second)
-			logClient.Error("remote", remote.remoteHostPort, "unable to reconnect:", err)
+		case <-timeout:
+			timeout = remote.reconnectRemote(false)
+			if timeout == nil {
+				return
+			}
 		}
 	}
 }
 
-func (remote *RemoteConnection) SetupConnection() error {
+func (remote *RemoteConnection) reconnectRemote(start bool) <-chan time.Time {
+	err  := remote.SetupConnection(start)
+	if err == nil {
+		remote.isUnavailable.Store(false)
+		return nil
+	}
+	logClient.Error("remote", remote.remoteHostPort, "unable to reconnect:", err)
+
+	return time.After(10 * time.Second)
+}
+
+func (remote *RemoteConnection) SetupConnection(startclient bool) error {
 	remote.reconnectChan = make(chan struct{})
 
 	grpcClient, err := MakeGRPCClient(remote.remoteHostPort, remote.socksProxyAddr)
@@ -108,9 +122,11 @@ func (remote *RemoteConnection) SetupConnection() error {
 		return err
 	}
 
-	err = StartClientRequest(compilationServiceClient, remote.clientID)
-	if err != nil {
-		return err
+	if startclient {
+		err = StartClientRequest(compilationServiceClient, remote.clientID)
+		if err != nil {
+			return err
+		}
 	}
 
 	remote.grpcClient = grpcClient
