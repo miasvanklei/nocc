@@ -1,6 +1,5 @@
 [Unit]
 Description=nocc-daemon socket
-Requires=nocc-daemon.service
 
 [Socket]
 ListenStream=/run/nocc-daemon.sock
