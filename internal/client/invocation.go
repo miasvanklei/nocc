@@ -329,11 +329,14 @@ func CreateInvocation(req DaemonSockRequest) *Invocation {
 
 func (invocation *Invocation) DoneRecvObj(err error) {
 	if invocation.doneRecv.Swap(1) == 0 {
+		logClient.Error("force interrupting waiting for object")
 		if err != nil {
 			invocation.err = err
 		}
 		invocation.wgRecv.Done()
 	}
+
+	logClient.Error("already force interrupted waiting for object")
 }
 
 func (invocation *Invocation) DoneUploadFile(err error) {
@@ -346,6 +349,8 @@ func (invocation *Invocation) DoneUploadFile(err error) {
 
 func (invocation *Invocation) ForceInterrupt(err error) {
 	logClient.Error("force interrupt", "sessionID", invocation.sessionID, "remoteHost", invocation.summary.remoteHost, invocation.cppInFile, err)
+	logClient.Error("summary:", invocation.summary.ToLogString(invocation))
+
 	// release invocation.wgUpload
 	for invocation.waitUploads.Load() != 0 {
 		invocation.DoneUploadFile(err)
