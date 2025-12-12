@@ -145,8 +145,11 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	startSessionReply, err := remote.compilationServiceClient.StartCompilationSession(
-		remote.grpcClient.callContext,
+		ctx,
 		&pb.StartCompilationSessionRequest{
 			ClientID:        remote.clientID,
 			SessionID:       invocation.sessionID,
