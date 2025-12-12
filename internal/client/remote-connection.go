@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ type RemoteConnection struct {
 	chanToUpload   chan fileUploadReq
 	quitDaemonChan chan int
 	reconnectChan  chan struct{}
+	reconnectWaitGroup sync.WaitGroup
 
 	socksProxyAddr string
 	remoteHostPort string
@@ -51,6 +53,7 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 		clientID:       daemon.clientID,
 		chanToUpload:   make(chan fileUploadReq, 50),
 		findInvocation: daemon.FindInvocationBySessionID,
+		reconnectWaitGroup: sync.WaitGroup{},
 	}
 
 	return remote
@@ -84,18 +87,30 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 	timeout := time.After(10 * time.Millisecond)
 	restarttimeout := time.After(5 * time.Minute)
 
+	remote.reconnectWaitGroup.Wait()
+	remote.grpcClient.Clear()
+
+	reconnect: for {
+		select {
+		case <-remote.quitDaemonChan:
+			return
+		case <-restarttimeout:
+			break reconnect
+		case <-timeout:
+			timeout = remote.reconnectRemote(false)
+			if timeout == nil {
+				return
+			}
+		}
+	}
+
 	for {
 		select {
 		case <-remote.quitDaemonChan:
 			return
 		case <-restarttimeout:
-			timeout = remote.reconnectRemote(true)
-			if timeout == nil {
-				return
-			}
-		case <-timeout:
-			timeout = remote.reconnectRemote(false)
-			if timeout == nil {
+			restarttimeout = remote.reconnectRemote(true)
+			if restarttimeout == nil {
 				return
 			}
 		}
@@ -145,11 +160,8 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 		return nil, fmt.Errorf("remote %s is unavailable", remote.remoteHost)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
 	startSessionReply, err := remote.compilationServiceClient.StartCompilationSession(
-		ctx,
+		remote.grpcClient.callContext,
 		&pb.StartCompilationSessionRequest{
 			ClientID:        remote.clientID,
 			SessionID:       invocation.sessionID,
@@ -227,6 +239,7 @@ func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) 
 }
 
 func (remote *RemoteConnection) Clear() {
+	remote.reconnectWaitGroup.Wait()
 	remote.compilationServiceClient = nil
 	if remote.grpcClient != nil {
 		remote.grpcClient.Clear()

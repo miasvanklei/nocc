@@ -14,6 +14,12 @@ import (
 )
 
 func (rc *RemoteConnection) CreateReceiveStream() {
+	rc.reconnectWaitGroup.Add(1)
+	rc.runReceiveStream()
+	rc.reconnectWaitGroup.Done()
+}
+
+func (rc *RemoteConnection) runReceiveStream() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -61,7 +67,7 @@ func (rc *RemoteConnection) CreateReceiveStream() {
 			sessionID, _ := strconv.Atoi(mdSession[0])
 			invocation := rc.findInvocation(uint32(sessionID))
 			if invocation != nil {
-				invocation.DoneRecvObj(err)
+				invocation.DoneRecvObj(err, false)
 			}
 		}
 	}
@@ -111,12 +117,12 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 
 		// non-zero exitCode means either a bug in the source code or a compiler errror
 		if firstChunk.CompilerExitCode != 0 {
-			invocation.DoneRecvObj(nil)
+			invocation.DoneRecvObj(nil, false)
 			continue
 		}
 
 		needRecreateStream, err := receiveObjFileByChunks(stream, invocation, int(firstChunk.FileSize))
-		invocation.DoneRecvObj(err)
+		invocation.DoneRecvObj(err, false)
 
 		if err != nil {
 			return needRecreateStream, err

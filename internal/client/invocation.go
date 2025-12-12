@@ -327,16 +327,17 @@ func CreateInvocation(req DaemonSockRequest) *Invocation {
 	return invocation
 }
 
-func (invocation *Invocation) DoneRecvObj(err error) {
+func (invocation *Invocation) DoneRecvObj(err error, forceInterrupt bool) {
 	if invocation.doneRecv.Swap(1) == 0 {
-		logClient.Error("force interrupting waiting for object")
 		if err != nil {
 			invocation.err = err
 		}
 		invocation.wgRecv.Done()
+		return
 	}
-
-	logClient.Error("already force interrupted waiting for object")
+	if forceInterrupt {
+		logClient.Error("already force interrupted")
+	}
 }
 
 func (invocation *Invocation) DoneUploadFile(err error) {
@@ -356,7 +357,7 @@ func (invocation *Invocation) ForceInterrupt(err error) {
 		invocation.DoneUploadFile(err)
 	}
 	// release invocation.wgDone
-	invocation.DoneRecvObj(err)
+	invocation.DoneRecvObj(err, true)
 }
 
 func (invocation *Invocation) OpenTempFile(fullPath string) (f *os.File, err error) {

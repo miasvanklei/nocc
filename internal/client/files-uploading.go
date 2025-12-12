@@ -20,13 +20,20 @@ type fileUploadReq struct {
 }
 
 func (rc *RemoteConnection) CreateUploadStream() {
+	rc.reconnectWaitGroup.Add(1)
+	rc.runUploadStream()
+	rc.reconnectWaitGroup.Done()
+}
+
+func (rc *RemoteConnection) runUploadStream() {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	stream, err :=  rc.compilationServiceClient.UploadFileStream(ctx)
+	stream, err := rc.compilationServiceClient.UploadFileStream(ctx)
 
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
+
 		return
 	}
 
