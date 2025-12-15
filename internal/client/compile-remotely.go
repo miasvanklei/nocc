@@ -65,7 +65,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	// 4. After the remote received all required files, it started compiling .cpp to .o.
 	// Here we send a request for this .o, it will wait for .o ready, download and save it.
 	logClient.Info(2, "wait for a compiled obj", "sessionID", invocation.sessionID)
-	exitCode, stdout, stderr, err = remote.WaitForCompiledObj(invocation)
+	exitCode, stdout, stderr, err = invocation.WaitOrInterruptForCompiledObj(remote)
 	if err != nil {
 		return
 	}
@@ -92,4 +92,27 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	}
 
 	return
+}
+
+// WaitOrInterruptForCompiledObj returns when the resulting .o file is compiled on remote, downloaded and saved on client.
+// We don't send any request here, just wait: after all uploads finish, the remote starts compiling .cpp.
+// When .o is ready, the remote pushes it to a receiving stream, and wgRecv is done.
+// If compilation exits with non-zero code, the same stream is used to send error details.
+// See FilesReceiving.
+func (invocation *Invocation) WaitOrInterruptForCompiledObj(remote *RemoteConnection) (int, []byte, []byte, error) {
+	waitCh := make(chan struct{})
+	go func() {
+		invocation.wgRecv.Wait()
+		close(waitCh)
+	}()
+
+	select {
+	case <-waitCh:
+		break
+	case <-remote.reconnectChan:
+		err := fmt.Errorf("interrupt sessionID %d because of connection loss", invocation.sessionID)
+		invocation.DoneRecvObj(err, true)
+	}
+
+	return invocation.compilerExitCode, invocation.compilerStdout, invocation.compilerStderr, invocation.err
 }

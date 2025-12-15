@@ -224,17 +224,6 @@ func (remote *RemoteConnection) UploadFilesToRemote(invocation *Invocation, requ
 	return invocation.err
 }
 
-// WaitForCompiledObj returns when the resulting .o file is compiled on remote, downloaded and saved on client.
-// We don't send any request here, just wait: after all uploads finish, the remote starts compiling .cpp.
-// When .o is ready, the remote pushes it to a receiving stream, and wgRecv is done.
-// If compilation exits with non-zero code, the same stream is used to send error details.
-// See FilesReceiving.
-func (remote *RemoteConnection) WaitForCompiledObj(invocation *Invocation) (exitCode int, stdout []byte, stderr []byte, err error) {
-	invocation.wgRecv.Wait()
-
-	return invocation.compilerExitCode, invocation.compilerStdout, invocation.compilerStderr, invocation.err
-}
-
 func (remote *RemoteConnection) KeepAlive(ctxSmallTimeout context.Context) error {
 	_, err := remote.compilationServiceClient.KeepAlive(ctxSmallTimeout, &pb.KeepAliveRequest{
 		ClientID: remote.clientID,
