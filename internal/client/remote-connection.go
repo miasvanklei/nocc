@@ -159,6 +159,9 @@ func (remote *RemoteConnection) SetupConnection(startclient bool) error {
 		}
 	}
 
+	remote.grpcClient = grpcClient
+	remote.compilationServiceClient = compilationServiceClient
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -166,9 +169,6 @@ func (remote *RemoteConnection) SetupConnection(startclient bool) error {
 	if err != nil {
 		return err
 	}
-
-	remote.grpcClient = grpcClient
-	remote.compilationServiceClient = compilationServiceClient
 
 	remote.startFileMonitoring()
 	return nil
