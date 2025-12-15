@@ -4,13 +4,26 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"nocc/internal/common"
 	"nocc/pb"
 )
+
+type StreamContext struct {
+	ctx context.Context
+	cancelFunc context.CancelFunc
+}
+
+func CreateStreamContext() *StreamContext {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	return &StreamContext {
+		ctx: ctx,
+		cancelFunc: cancelFunc,
+	}
+}
 
 // RemoteConnection represents a state of a current process related to remote execution.
 // It also has methods that call grpc, so this module is close to protobuf.
@@ -21,7 +34,8 @@ type RemoteConnection struct {
 	chanToUpload   chan fileUploadReq
 	quitDaemonChan chan int
 	reconnectChan  chan struct{}
-	reconnectWaitGroup sync.WaitGroup
+	receiveStreamContext *StreamContext
+	uploadStreamContext *StreamContext
 
 	socksProxyAddr string
 	remoteHostPort string
@@ -53,7 +67,6 @@ func MakeRemoteConnection(daemon *Daemon, remoteHostPort string, socksProxyAddr 
 		clientID:       daemon.clientID,
 		chanToUpload:   make(chan fileUploadReq, 50),
 		findInvocation: daemon.FindInvocationBySessionID,
-		reconnectWaitGroup: sync.WaitGroup{},
 	}
 
 	return remote
@@ -87,10 +100,8 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 	timeout := time.After(10 * time.Millisecond)
 	restarttimeout := time.After(5 * time.Minute)
 
-	logClient.Error("Start waiting on waitgroup")
-	remote.reconnectWaitGroup.Wait()
-	logClient.Error("Finished waiting on waitgroup")
-
+	remote.receiveStreamContext.cancelFunc()
+	remote.uploadStreamContext.cancelFunc()
 	remote.grpcClient.Clear()
 
 	reconnect: for {
@@ -242,7 +253,6 @@ func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) 
 }
 
 func (remote *RemoteConnection) Clear() {
-	remote.reconnectWaitGroup.Wait()
 	remote.compilationServiceClient = nil
 	if remote.grpcClient != nil {
 		remote.grpcClient.Clear()

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -14,18 +13,14 @@ import (
 )
 
 func (rc *RemoteConnection) CreateReceiveStream() {
-	rc.reconnectWaitGroup.Add(1)
-	logClient.Error("Added 1 to waitgroup")
+	rc.receiveStreamContext = CreateStreamContext()
 	rc.runReceiveStream()
-	rc.reconnectWaitGroup.Done()
-	logClient.Error("Remove 1 from waitgroup")
 }
 
 func (rc *RemoteConnection) runReceiveStream() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
+	defer rc.receiveStreamContext.cancelFunc()
 
-	stream, err := rc.compilationServiceClient.RecvCompiledObjStream(ctx,
+	stream, err := rc.compilationServiceClient.RecvCompiledObjStream(rc.receiveStreamContext.ctx,
 		&pb.OpenReceiveStreamRequest{ClientID: rc.clientID},
 	)
 

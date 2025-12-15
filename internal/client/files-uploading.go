@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"io"
 	"os"
 	"time"
@@ -20,18 +19,14 @@ type fileUploadReq struct {
 }
 
 func (rc *RemoteConnection) CreateUploadStream() {
-	rc.reconnectWaitGroup.Add(1)
-	logClient.Error("Added 1 to waitgroup")
+	rc.uploadStreamContext = CreateStreamContext()
 	rc.runUploadStream()
-	rc.reconnectWaitGroup.Done()
-	logClient.Error("Remove 1 from waitgroup")
 }
 
 func (rc *RemoteConnection) runUploadStream() {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
+	defer rc.uploadStreamContext.cancelFunc()
 
-	stream, err := rc.compilationServiceClient.UploadFileStream(ctx)
+	stream, err := rc.compilationServiceClient.UploadFileStream(rc.uploadStreamContext.ctx)
 
 	if err != nil {
 		rc.OnRemoteBecameUnavailable(err)
