@@ -15,8 +15,10 @@ import (
 
 func (rc *RemoteConnection) CreateReceiveStream() {
 	rc.reconnectWaitGroup.Add(1)
+	logClient.Error("Added 1 to waitgroup")
 	rc.runReceiveStream()
 	rc.reconnectWaitGroup.Done()
+	logClient.Error("Remove 1 from waitgroup")
 }
 
 func (rc *RemoteConnection) runReceiveStream() {

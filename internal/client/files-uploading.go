@@ -21,8 +21,10 @@ type fileUploadReq struct {
 
 func (rc *RemoteConnection) CreateUploadStream() {
 	rc.reconnectWaitGroup.Add(1)
+	logClient.Error("Added 1 to waitgroup")
 	rc.runUploadStream()
 	rc.reconnectWaitGroup.Done()
+	logClient.Error("Remove 1 from waitgroup")
 }
 
 func (rc *RemoteConnection) runUploadStream() {

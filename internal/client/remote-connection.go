@@ -87,7 +87,10 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 	timeout := time.After(10 * time.Millisecond)
 	restarttimeout := time.After(5 * time.Minute)
 
+	logClient.Error("Start waiting on waitgroup")
 	remote.reconnectWaitGroup.Wait()
+	logClient.Error("Finished waiting on waitgroup")
+
 	remote.grpcClient.Clear()
 
 	reconnect: for {
