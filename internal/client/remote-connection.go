@@ -140,23 +140,31 @@ func (remote *RemoteConnection) reconnectRemote(start bool) <-chan time.Time {
 	}
 	logClient.Error("remote", remote.remoteHostPort, "unable to reconnect:", err)
 
-	return time.After(10 * time.Second)
+	return time.After(5 * time.Second)
 }
 
 func (remote *RemoteConnection) SetupConnection(startclient bool) error {
 	remote.reconnectChan = make(chan struct{})
 
 	grpcClient, err := MakeGRPCClient(remote.remoteHostPort, remote.socksProxyAddr)
-	compilationServiceClient := pb.NewCompilationServiceClient(grpcClient.connection)
 	if err != nil {
 		return err
 	}
 
+	compilationServiceClient := pb.NewCompilationServiceClient(grpcClient.connection)
 	if startclient {
 		err = StartClientRequest(compilationServiceClient, remote.clientID)
 		if err != nil {
 			return err
 		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = remote.KeepAlive(ctx)
+	if err != nil {
+		return err
 	}
 
 	remote.grpcClient = grpcClient
@@ -227,17 +235,23 @@ func (remote *RemoteConnection) WaitForCompiledObj(invocation *Invocation) (exit
 	return invocation.compilerExitCode, invocation.compilerStdout, invocation.compilerStderr, invocation.err
 }
 
-func (remote *RemoteConnection) KeepAlive(ctxSmallTimeout context.Context) {
-	if remote.isUnavailable.Load() {
-		return
-	}
-
+func (remote *RemoteConnection) KeepAlive(ctxSmallTimeout context.Context) error {
 	_, err := remote.compilationServiceClient.KeepAlive(ctxSmallTimeout, &pb.KeepAliveRequest{
 		ClientID: remote.clientID,
 	})
 
+	return err
+}
+
+func (remote *RemoteConnection) VerifyAlive() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if remote.isUnavailable.Load() {
+		return
+	}
+	err := remote.KeepAlive(ctx)
 	if err != nil {
-		logClient.Error("keep alive failed:", err)
+		logClient.Error("keep alive failed")
 		remote.OnRemoteBecameUnavailable(err)
 	}
 }
