@@ -134,6 +134,7 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 func (remote *RemoteConnection) reconnectRemote(start bool) <-chan time.Time {
 	err  := remote.SetupConnection(start)
 	if err == nil {
+		logClient.Error("Reconnected stream")
 		remote.isUnavailable.Store(false)
 		return nil
 	}
