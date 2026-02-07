@@ -25,6 +25,12 @@ func CreateStreamContext() *StreamContext {
 	}
 }
 
+func (streamContext *StreamContext) TryCancelStreamContext() {
+	if streamContext != nil {
+		streamContext.cancelFunc()
+	}
+}
+
 // RemoteConnection represents a state of a current process related to remote execution.
 // It also has methods that call grpc, so this module is close to protobuf.
 // Daemon makes one RemoteConnection to one server — for server.Session creation, files uploading, obj receiving.
@@ -100,8 +106,8 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 	timeout := time.After(10 * time.Millisecond)
 	restarttimeout := time.After(5 * time.Minute)
 
-	remote.receiveStreamContext.cancelFunc()
-	remote.uploadStreamContext.cancelFunc()
+	remote.receiveStreamContext.TryCancelStreamContext()
+	remote.uploadStreamContext.TryCancelStreamContext()
 	remote.grpcClient.Clear()
 
 	reconnect: for {
