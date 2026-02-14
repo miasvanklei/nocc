@@ -246,7 +246,7 @@ func (invocation *Invocation) parseFOption(args []string, argIndex *int) []strin
 
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []string {
 	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
-	includefileKeys := []string{"-include-pch", "-include"}
+	includefileKeys := []string{"-include-pch", "-include", "-fsanitize-ignorelist="}
 
 	for _, key := range includefolderKeys {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
