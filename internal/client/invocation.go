@@ -137,7 +137,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
 				continue
 			} else if args := invocation.parseFOption(cmdLine, &i); args != nil {
-				invocation.compilerArgs = append(invocation.compilerArgs, args...)
+				invocation.compilerArgs = append(invocation.compilerArgs, strings.Join(args, ""))
 				invocation.fOptionFiles[args[0]] = args[1]
 				continue
 			} else if arg == "-x" {
@@ -233,7 +233,7 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 }
 
 func (invocation *Invocation) parseFOption(args []string, argIndex *int) []string {
-	fOptions := []string{"-frandomize-layout-seed-file=", "--warning-suppression-mappings="}
+	fOptions := []string{"-frandomize-layout-seed-file=", "--warning-suppression-mappings=", "-fsanitize-ignorelist="}
 
 	for _, key := range fOptions {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
@@ -246,7 +246,7 @@ func (invocation *Invocation) parseFOption(args []string, argIndex *int) []strin
 
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []string {
 	includefolderKeys := []string{"-I", "-iquote", "-isystem"}
-	includefileKeys := []string{"-include-pch", "-include", "-fsanitize-ignorelist="}
+	includefileKeys := []string{"-include-pch", "-include"}
 
 	for _, key := range includefolderKeys {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
