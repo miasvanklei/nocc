@@ -44,8 +44,9 @@ message StartCompilationSessionRequest {
     string InputFile = 10;
     string Compiler = 11;
     repeated string CompilerArgs = 12;
-    repeated FileMetadata RequiredFiles = 13;
-    optional FileMetadata RequiredPchFile = 14;
+    repeated string OriginalCompilerArgs = 13;
+    repeated FileMetadata RequiredFiles = 14;
+    optional FileMetadata RequiredPchFile = 15;
 }
 
 message StartCompilationSessionReply {

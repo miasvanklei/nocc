@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/sha256"
 	"fmt"
-	"path"
 	"strings"
 
 	"nocc/internal/common"
@@ -39,23 +38,17 @@ func MakeObjFileCache(cacheDir string, objTmpDir string, limitBytes int64) (*Obj
 // Compiler compilation depends not only on files, but on other options too, the final compilerCmdLine looks like
 // > g++ -Wall -fpch-preprocess ... -iquote /tmp/client1/headers -o /tmp/client1/some.cpp.123.o /tmp/client1/some.cpp
 // We want to reuse a ready .o file if and only if:
-// * the .cpp file is the same (its name and sha256)
+// * the .cpp file is the same (sha256)
 // * all dependent .h/.nocc-pch/etc. are the same (their count, order, size, sha256)
-// * all compiler options are the same
+// * all compiler options are the same: We use the original commandline which includes the .cpp file
 //
-// The problem is with the last point. compilerCmdLine contains -I and other options that vary between clients:
-// > -iquote ${SrcCachDir}/clients/{clientID}/home/{username}/proj -I /tmp/gch/{random_hash} -o ...{random_int}.o
-// These are different options, but in fact, they should be considered the same.
-// That's why we don't take include paths into account when calculating a hash from compilerCmdLine.
-// The assumption is: if all deps are equal, their actual paths/names don't matter.
-func (cache *ObjFileCache) MakeObjCacheKey(compilerName string, compilerArgs []string, sessionFiles []*fileInClientDir, cppInFile string) common.SHA256 {
+func (cache *ObjFileCache) MakeObjCacheKey(compilerName string, compilerArgs []string, sessionFiles []*fileInClientDir) common.SHA256 {
 	hasher := sha256.New()
 
 	hasher.Write([]byte(compilerName))
 	for _, arg := range compilerArgs {
 		hasher.Write([]byte(arg))
 	}
-	hasher.Write([]byte(path.Base(cppInFile))) // not a full path, as it varies between clients
 
 	sha256xor := common.MakeSHA256Struct(hasher)
 	sha256xor.B8_15 ^= uint64(len(compilerArgs))

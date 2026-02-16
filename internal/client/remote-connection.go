@@ -197,6 +197,7 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 			InputFile:       invocation.cppInFile,
 			Compiler:        invocation.compilerName,
 			CompilerArgs:    invocation.compilerArgs,
+			OriginalCompilerArgs: invocation.cmdLine,
 			RequiredFiles:   requiredFiles,
 			RequiredPchFile: requiredPchFile,
 		})

@@ -41,6 +41,7 @@ type Invocation struct {
 	cppInFile    string            // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile   string            // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	compilerName string            // g++ / clang / etc.
+	cmdLine[]      string          // original cmdline
 	compilerArgs []string          // args like -Wall, -fpch-preprocess, -I{dir} and many more
 	fOptionFiles map[string]string // -frandomize-layout-seed-file={file} and others
 	depsFlags    DepCmdFlags       // -MD -MF file and others, used for .d files generation (not passed to server)
@@ -118,6 +119,7 @@ func pathAbs(cwd string, relPath string) string {
 }
 
 func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
+	invocation.cmdLine = cmdLine
 	for i := 0; i < len(cmdLine); i++ {
 		arg := cmdLine[i]
 		if len(arg) == 0 {
