@@ -84,9 +84,7 @@ func isCXXSourceFileName(fileName string) bool {
 		strings.HasSuffix(fileName, ".c++") ||
 		strings.HasSuffix(fileName, ".C++") ||
 		strings.HasSuffix(fileName, ".CXX") ||
-		strings.HasSuffix(fileName, ".ii") ||
-		strings.HasSuffix(fileName, ".S") ||
-		strings.HasSuffix(fileName, ".s")
+		strings.HasSuffix(fileName, ".ii")
 }
 
 func isObjCSourceFileName(fileName string) bool {
