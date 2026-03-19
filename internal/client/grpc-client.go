@@ -78,7 +78,7 @@ func runInSocks5(proxyAddr string) (grpc.DialOption, error) {
 }
 
 func (grpcClient *GRPCClient) Clear() {
-	if grpcClient.connection != nil {
+	if grpcClient != nil && grpcClient.connection != nil {
 		grpcClient.cancelFunc()
 		_ = grpcClient.connection.Close()
 
