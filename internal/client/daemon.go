@@ -304,7 +304,7 @@ func (daemon *Daemon) PeriodicallyInterruptHangedInvocations() {
 			daemon.mu.Lock()
 			for _, invocation := range daemon.activeInvocations {
 				if time.Since(invocation.createTime) > daemon.invocationTimeout {
-					invocation.ForceInterrupt(fmt.Errorf("interrupt sessionID %d (%s) after %d sec timeout", invocation.sessionID, invocation.summary.remoteHost, int(time.Since(invocation.createTime).Seconds())))
+					invocation.ForceInterrupt(fmt.Errorf("interrupt sessionID %d (%s) after %d sec timeout, reached step %s", invocation.sessionID, invocation.summary.remoteHost, int(time.Since(invocation.createTime).Seconds()), invocation.summary.timings[len(invocation.summary.timings)-1].stepName))
 				}
 			}
 			daemon.mu.Unlock()
