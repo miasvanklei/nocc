@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,8 +36,10 @@ const (
 // Note, that files inside a client working dir are not _all_ files from a client: only files uploaded to current shard.
 // Having 3 nocc-server hosts, a client balances between them based on a .cpp basename.
 type fileInClientDir struct {
-	fileSize   int64
-	fileSHA256 common.SHA256
+	fileSize      int64
+	fileSHA256    common.SHA256
+	isSymlink     bool
+	symlinkTarget string
 
 	state           atomic.Int32 // fsFileState*
 	uploadStartTime time.Time
@@ -62,11 +65,13 @@ type Client struct {
 	chanReadySessions chan *Session
 }
 
-func (client *Client) makeNewFile(clientFileName string, fileSize int64, fileSHA256 common.SHA256) *fileInClientDir {
+func (client *Client) makeNewFile(clientFileName string, fileSize int64, isSymlink bool, symlinkTarget string, fileSHA256 common.SHA256) *fileInClientDir {
 	return &fileInClientDir{
 		fileSize:        fileSize,
 		fileSHA256:      fileSHA256,
+		isSymlink:       isSymlink,
 		serverFileName:  client.MapClientFileNameToServerAbs(clientFileName),
+		symlinkTarget:   symlinkTarget,
 		state:           atomic.Int32{},
 		uploadStartTime: time.Now(),
 	}
@@ -136,7 +141,7 @@ func (client *Client) GetSessionsNotStartedCompilation() []*Session {
 //
 // The only reason why we can return an error here is a dependency conflict:
 // previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2.
-func (client *Client) StartUsingFileInSession(clientFileName string, fileSize int64, fileSHA256 common.SHA256) (*fileInClientDir, error) {
+func (client *Client) StartUsingFileInSession(clientFileName string, fileSize int64, isSymlink bool, symlinkTarget string, fileSHA256 common.SHA256) (*fileInClientDir, error) {
 	client.mu.RLock()
 	file := client.files[clientFileName]
 	client.mu.RUnlock()
@@ -148,7 +153,7 @@ func (client *Client) StartUsingFileInSession(clientFileName string, fileSize in
 			client.mu.Unlock()
 			return file, nil
 		}
-		newFile := client.makeNewFile(clientFileName, fileSize, fileSHA256)
+		newFile := client.makeNewFile(clientFileName, fileSize, isSymlink, symlinkTarget, fileSHA256)
 		client.files[clientFileName] = newFile
 		client.mu.Unlock()
 		return newFile, nil
@@ -167,20 +172,13 @@ func (client *Client) StartUsingFileInSession(clientFileName string, fileSize in
 // Moreover, we need to call os.MkdirAll only once for all files within it (when it appears first time).
 // After this call, every /home/file.h can be saved into ${SrcCacheDir}/.../{clientID}/home/file.h.
 func (client *Client) MkdirAllForSession(session *Session) {
-	dirsToCreate := make([]string, 0)
+	dirsToCreate := map[string]bool{}
 
 	client.mu.RLock()
 	for _, file := range session.files {
-		lastSlash := len(file.serverFileName) - 1
-		for file.serverFileName[lastSlash] != '/' {
-			lastSlash--
-		}
-		dir := file.serverFileName[0:lastSlash]
-		if exists := client.dirs[dir]; !exists {
-			// session.files (includes order) is often partially sorted, so add fewer duplicates
-			if len(dirsToCreate) == 0 || dirsToCreate[len(dirsToCreate)-1] != dir {
-				dirsToCreate = append(dirsToCreate, dir)
-			}
+		path := filepath.Dir(file.serverFileName)
+		if !client.dirs[path] && !dirsToCreate[path] {
+			dirsToCreate[path] = true
 		}
 	}
 	client.mu.RUnlock()
@@ -189,14 +187,14 @@ func (client *Client) MkdirAllForSession(session *Session) {
 		return
 	}
 
-	for _, dir := range dirsToCreate {
+	for dir := range dirsToCreate {
 		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 			logServer.Error("can't create dir", dir, err)
 		}
 	}
 
 	client.mu.Lock()
-	for _, dir := range dirsToCreate {
+	for dir := range dirsToCreate {
 		client.dirs[dir] = true
 	}
 	client.mu.Unlock()

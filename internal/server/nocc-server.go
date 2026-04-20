@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -71,7 +72,7 @@ func (s *NoccServer) StartGRPCListening(listenAddrs []string) error {
 			logServer.Error(err)
 			return err
 		}
-    }
+	}
 
 	return nil
 }
@@ -149,14 +150,28 @@ func (s *NoccServer) StartCompilationSession(_ context.Context, in *pb.StartComp
 		if file.state.CompareAndSwap(fsFileStateJustCreated, fsFileStateUploading) {
 			file.uploadStartTime = time.Now()
 
-			if s.SrcFileCache.CreateHardLinkFromCache(file.serverFileName, file.fileSHA256) {
-				logServer.Info(2, "file", file.serverFileName, "is in src-cache, no need to upload")
+			if file.isSymlink {
+				if err := os.Symlink(file.symlinkTarget, file.serverFileName); err != nil {
+					file.state.Store(fsFileStateUploadError)
+					logServer.Error("fs symlink error", "sessionID", session.sessionID, "file", file.serverFileName, err)
+
+					continue
+				}
+				logServer.Info(1, "fs created->uploaded (symlink)", "sessionID", session.sessionID, file.serverFileName, "->", file.symlinkTarget)
 				file.state.Store(fsFileStateUploaded)
 
 				continue
 			}
 
-			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, client.MapServerAbsToClientFileName(file.serverFileName))
+			clientFilenameToUpload := client.MapServerAbsToClientFileName(file.serverFileName)
+			if s.SrcFileCache.CreateHardLinkFromCache(file.serverFileName, file.fileSHA256) {
+				logServer.Info(2, "file", clientFilenameToUpload, "is in src-cache, no need to upload")
+				file.state.Store(fsFileStateUploaded)
+
+				continue
+			}
+
+			logServer.Info(1, "fs created->uploading", "sessionID", session.sessionID, clientFilenameToUpload)
 			fileIndexesToUpload = append(fileIndexesToUpload, uint32(index))
 		} else if file.state.CompareAndSwap(fsFileStateUploading, fsFileStateUploading) {
 			if !client.IsFileUploadHanged(file) { // this file is already requested to be uploaded

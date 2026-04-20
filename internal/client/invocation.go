@@ -106,16 +106,6 @@ func isHeaderFileName(fileName string) bool {
 		strings.HasSuffix(fileName, ".hpp")
 }
 
-func pathAbs(cwd string, relPath string) string {
-	var absPath string
-	if relPath[0] == '/' {
-		absPath = relPath
-	} else {
-		absPath = filepath.Join(cwd, relPath)
-	}
-	return filepath.Clean(absPath)
-}
-
 func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	invocation.cmdLine = cmdLine
 	for i := 0; i < len(cmdLine); i++ {
@@ -131,7 +121,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				if parseFileResult.value == "/dev/null" {
 					invocation.invokeType = invokedForLocalCompiling
 				}
-				invocation.objOutFile = pathAbs(invocation.cwd, parseFileResult.value)
+				invocation.objOutFile = common.PathAbs(invocation.cwd, parseFileResult.value)
 				continue
 			} else if args := invocation.parseIncludeArgs(cmdLine, &i); args != nil {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
@@ -152,7 +142,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
 				return
 			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-MF", &i); parseFileResult != nil {
-				invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
+				invocation.depsFlags.SetCmdFlagMF(common.PathAbs(invocation.cwd, parseFileResult.value))
 				continue
 			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-MT", &i); parseFileResult != nil {
 				invocation.depsFlags.SetCmdFlagMT(parseFileResult.value)
@@ -194,7 +184,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			// Best effort for compiling configure tests locally
 			determineLocalCompiling(invocation, arg)
 
-			invocation.cppInFile = pathAbs(invocation.cwd, arg)
+			invocation.cppInFile = common.PathAbs(invocation.cwd, arg)
 			continue
 		}
 
@@ -221,11 +211,11 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int) bool {
 	if parseFileResult := invocation.parseArgFile(args, "-MD", argIndex); parseFileResult != nil {
 		invocation.depsFlags.SetCmdFlagMD()
-		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
+		invocation.depsFlags.SetCmdFlagMF(common.PathAbs(invocation.cwd, parseFileResult.value))
 		return true
 	} else if parseFileResult := invocation.parseArgFile(args, "-MMD", argIndex); parseFileResult != nil {
 		invocation.depsFlags.SetCmdFlagMMD()
-		invocation.depsFlags.SetCmdFlagMF(pathAbs(invocation.cwd, parseFileResult.value))
+		invocation.depsFlags.SetCmdFlagMF(common.PathAbs(invocation.cwd, parseFileResult.value))
 		return true
 	}
 
@@ -237,7 +227,7 @@ func (invocation *Invocation) parseFOption(args []string, argIndex *int) []strin
 
 	for _, key := range fOptions {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
-			return append(parseFileResult.args, pathAbs(invocation.cwd, parseFileResult.value))
+			return append(parseFileResult.args, common.PathAbs(invocation.cwd, parseFileResult.value))
 		}
 	}
 
@@ -250,14 +240,14 @@ func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []s
 
 	for _, key := range includefolderKeys {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
-			dir := pathAbs(invocation.cwd, parseFileResult.value)
+			dir := common.PathAbs(invocation.cwd, parseFileResult.value)
 			return append(parseFileResult.args, dir)
 		}
 	}
 
 	for _, key := range includefileKeys {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
-			dir := pathAbs(invocation.cwd, parseFileResult.value)
+			dir := common.PathAbs(invocation.cwd, parseFileResult.value)
 			if _, err := os.Stat(dir); err == nil {
 				return append(parseFileResult.args, dir)
 			}

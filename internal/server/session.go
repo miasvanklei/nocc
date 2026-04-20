@@ -23,10 +23,10 @@ import (
 type Session struct {
 	sessionID uint32
 
-	InputFile     string // as-is from a client cmd line (relative to compilerCwd on a server-side)
-	OutputFile    string // inside ${ObjCacheDir}/compiler-out, or directly in ${ObjCacheDir}/obj-cache if taken from cache
-	compilerName  string // g++ / clang / etc.
-	compilerArgs  []string // all args for the compiler, including -I/-isystem/-L
+	InputFile    string   // as-is from a client cmd line (relative to compilerCwd on a server-side)
+	OutputFile   string   // inside ${ObjCacheDir}/compiler-out, or directly in ${ObjCacheDir}/obj-cache if taken from cache
+	compilerName string   // g++ / clang / etc.
+	compilerArgs []string // all args for the compiler, including -I/-isystem/-L
 
 	files   []*fileInClientDir
 	pchFile *fileInClientDir
@@ -43,11 +43,11 @@ type Session struct {
 
 func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*Session, error) {
 	newSession := &Session{
-		sessionID:     in.SessionID,
-		files:         make([]*fileInClientDir, len(in.RequiredFiles)),
-		compilerName:  in.Compiler,
-		InputFile:     in.InputFile,
-		compilerArgs:  in.CompilerArgs,
+		sessionID:    in.SessionID,
+		files:        make([]*fileInClientDir, len(in.RequiredFiles)),
+		compilerName: in.Compiler,
+		InputFile:    in.InputFile,
+		compilerArgs: in.CompilerArgs,
 	}
 
 	for index, meta := range in.RequiredFiles {
@@ -78,7 +78,7 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 // previously, a client reported that clientFileName has sha256=v1, and now it sends sha256=v2
 func startUsingFileInSession(client *Client, meta *pb.FileMetadata) (*fileInClientDir, error) {
 	fileSHA256 := common.SHA256{B0_7: meta.SHA256_B0_7, B8_15: meta.SHA256_B8_15, B16_23: meta.SHA256_B16_23, B24_31: meta.SHA256_B24_31}
-	return client.StartUsingFileInSession(meta.FileName, meta.FileSize, fileSHA256)
+	return client.StartUsingFileInSession(meta.FileName, meta.FileSize, meta.IsSymlink, meta.SymlinkTarget, fileSHA256)
 }
 
 // StartCompilingObjIfPossible executes compiler if all dependent files (.cpp/.h/.nocc-pch/etc.) are ready.

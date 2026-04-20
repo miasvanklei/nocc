@@ -36,7 +36,7 @@ func CompileCppRemotely(daemon *Daemon, remote *RemoteConnection, invocation *In
 	}
 
 	for fOption, fOptionFile := range invocation.fOptionFiles {
-		fileMeta, err := createIncludedFileWithBuffer(fOptionFile, nil)
+		fileMeta, err := createIncludedFileWithBuffer(fOptionFile)
 		if err != nil {
 			return 0, nil, nil, fmt.Errorf("failed to create file metadata for option %q for file %q: %v", fOption, fOptionFile, err)
 		}
