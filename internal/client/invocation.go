@@ -223,7 +223,12 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 }
 
 func (invocation *Invocation) parseFOption(args []string, argIndex *int) []string {
-	fOptions := []string{"-frandomize-layout-seed-file=", "--warning-suppression-mappings=", "-fsanitize-ignorelist="}
+	fOptions := []string{
+		"-frandomize-layout-seed-file=",
+		"--warning-suppression-mappings=",
+		"-fsanitize-ignorelist=",
+		"@", // only responsefiles without recursive imports
+	}
 
 	for _, key := range fOptions {
 		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
