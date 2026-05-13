@@ -126,10 +126,6 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if args := invocation.parseIncludeArgs(cmdLine, &i); args != nil {
 				invocation.compilerArgs = append(invocation.compilerArgs, args...)
 				continue
-			} else if args := invocation.parseFOption(cmdLine, &i); args != nil {
-				invocation.compilerArgs = append(invocation.compilerArgs, strings.Join(args, ""))
-				invocation.fOptionFiles[args[0]] = args[1]
-				continue
 			} else if arg == "-x" {
 				xArg := cmdLine[i+1]
 				if xArg == "c-header" || xArg == "c++-header" || xArg == "objective-c-header" || xArg == "objective-c++-header" {
@@ -175,6 +171,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				}
 				continue
 			}
+		} else if invocation.parseFOption(arg) {
+				continue
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
@@ -222,7 +220,19 @@ func (invocation *Invocation) parsePreprocessorArg(args []string, argIndex *int)
 	return false
 }
 
-func (invocation *Invocation) parseFOption(args []string, argIndex *int) []string {
+func (invocation *Invocation) parseResponseFile(key string, arg string) bool {
+	if !strings.HasPrefix(arg, key) {
+		return false
+	}
+
+	file := common.PathAbs(invocation.cwd, arg[len(key):])
+	invocation.compilerArgs = append(invocation.compilerArgs, key + file)
+	invocation.fOptionFiles[key] = file
+
+	return true
+}
+
+func (invocation *Invocation) parseFOption(arg string) bool {
 	fOptions := []string{
 		"-frandomize-layout-seed-file=",
 		"--warning-suppression-mappings=",
@@ -231,12 +241,12 @@ func (invocation *Invocation) parseFOption(args []string, argIndex *int) []strin
 	}
 
 	for _, key := range fOptions {
-		if parseFileResult := invocation.parseArgFile(args, key, argIndex); parseFileResult != nil {
-			return append(parseFileResult.args, common.PathAbs(invocation.cwd, parseFileResult.value))
+		if invocation.parseResponseFile(key, arg) {
+			return true
 		}
 	}
 
-	return nil
+	return false
 }
 
 func (invocation *Invocation) parseIncludeArgs(args []string, argIndex *int) []string {
