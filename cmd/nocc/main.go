@@ -3,33 +3,76 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
-	"slices"
+	"sync/atomic"
+	"syscall"
+)
+
+type CompilationStatus int32
+
+const (
+	StatusNotStarted CompilationStatus = iota
+	StatusRunning
+	StatusInterrupted
 )
 
 func main() {
+	exitCode := realMain()
+	_ = os.Stderr.Close()
+	os.Exit(exitCode)
+}
+
+func realMain() int {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	compiler, args := splitCompilerAndArgs(os.Args)
 	if shouldCompileLocally(args) {
-		executeLocally(compiler, args, "")
+		if err := executeLocally(compiler, args, nil); err != nil {
+			return exitOnError(err)
+		}
 	}
 
-	c, err := net.Dial("unix", "/run/nocc-daemon.sock")
-	exitOnError(err)
-	defer c.Close()
+	conn, err := net.Dial("unix", "/run/nocc-daemon.sock")
+	if err != nil {
+		if err := executeLocally(compiler, args, err); err != nil {
+			return exitOnError(err)
+		}
+	}
+	defer conn.Close()
 
-	cwd := get_cwd()
+	return runCompilationInDaemon(ctx, conn, compiler, args)
+}
 
-	sendRequest(c, cwd, compiler, args)
-	exitCode := readResponse(c, compiler, args)
+func runCompilationInDaemon(ctx context.Context, conn net.Conn, compiler string, args []string) int {
+	var compilationStatus atomic.Int32
+	normalExitchan := make(chan struct{})
+	defer close(normalExitchan)
 
-	os.Stderr.Close()
-	os.Exit(exitCode)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return exitOnError(err)
+	}
+
+	go waitForInterruption(ctx, conn, &compilationStatus, normalExitchan)
+	if err := sendRequest(conn, &compilationStatus, cwd, compiler, args); err != nil {
+		return exitOnError(err)
+	}
+
+	exitCode, err := readResponse(conn)
+	if err != nil {
+		return exitOnError(err)
+	}
+	return exitCode
 }
 
 // We compile locally under the following conditions:
@@ -39,18 +82,9 @@ func shouldCompileLocally(args []string) bool {
 	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-c")
 }
 
-func exitOnError(err error) {
-	if err != nil {
-		os.Stderr.WriteString("[nocc] " + err.Error() + "\n")
-		os.Stderr.Close()
-		os.Exit(1)
-	}
-}
-
-func get_cwd() string {
-	cwd, err := os.Getwd()
-	exitOnError(err)
-	return cwd
+func exitOnError(err error) int {
+	_, _ = os.Stderr.WriteString("[nocc] " + err.Error() + "\n")
+	return 1
 }
 
 func splitCompilerAndArgs(args []string) (compiler string, arguments []string) {
@@ -70,76 +104,85 @@ func getPaths() []string {
 	return strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
 }
 
-func getCompiler(compiler string) (string, error) {
-	path_current_program, _ := os.Executable()
+func getCompiler(compiler string) (*string, error) {
+	pathCurrentProgram, _ := os.Executable()
 
 	for _, path := range getPaths() {
-		path_compiler := filepath.Join(path, compiler)
-		real_path, err := filepath.EvalSymlinks(path_compiler)
-		if err != nil || path_current_program == real_path {
+		pathCompiler := filepath.Join(path, compiler)
+		realPath, err := filepath.EvalSymlinks(pathCompiler)
+		if err != nil || pathCurrentProgram == realPath {
 			continue
 		}
 
-		return path_compiler, nil
+		return &pathCompiler, nil
 	}
 
 	err := fmt.Errorf("compiler: %s not found in PATH", compiler)
-	return "", err
+	return nil, err
 }
 
-func executeLocally(compiler string, arguments []string, error string) {
-	if error != "" {
-		os.Stderr.WriteString("[nocc] " + error + "\n")
+func executeLocally(compiler string, arguments []string, err error) error {
+	if err != nil {
+		_, _ = os.Stderr.WriteString("[nocc] " + err.Error() + "\n")
 	}
 
-	path_compiler, err := getCompiler(compiler)
+	pathCompiler, err := getCompiler(compiler)
 	if err != nil {
-		exitOnError(err)
+		return err
 	}
 
 	var compilerStdout, compilerStderr bytes.Buffer
-	cmd := exec.Command(path_compiler, arguments...)
+	cmd := exec.Command(*pathCompiler, arguments...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = &compilerStdout
 	cmd.Stderr = &compilerStderr
 	err = cmd.Run()
 
-	os.Stdout.Write(compilerStdout.Bytes())
-	os.Stderr.Write(compilerStderr.Bytes())
+	_, _ = os.Stdout.Write(compilerStdout.Bytes())
+	_, _ = os.Stderr.Write(compilerStderr.Bytes())
 
-	if err != nil {
-		exitOnError(err)
-	}
-
-	os.Exit(0)
+	return err
 }
 
-func sendRequest(conn net.Conn, current_path string, compiler string, arguments []string) {
-	_, err := conn.Write(fmt.Appendf(nil, "%s\b%s\b%s\000", current_path, compiler, strings.Join(arguments, "\b")))
-	if err != nil {
-		executeLocally(compiler, arguments, err.Error())
+func waitForInterruption(ctx context.Context, conn net.Conn, compilationStatus *atomic.Int32, normalExitchan chan struct{}) {
+	select {
+	case <-ctx.Done():
+		if compilationStatus.CompareAndSwap(int32(StatusRunning), int32(StatusInterrupted)) {
+			_, _ = conn.Write(fmt.Appendf(nil, "\000"))
+		}
+		return
+	case <-normalExitchan:
+		return
 	}
 }
 
-func readResponse(conn net.Conn, compiler string, arguments []string) int {
+func sendRequest(conn net.Conn, compilationStatus *atomic.Int32, currentPath string, compiler string, arguments []string) (err error) {
+	if compilationStatus.CompareAndSwap(int32(StatusNotStarted), int32(StatusRunning)) {
+		_, err = conn.Write(fmt.Appendf(nil, "%s\b%s\b%s\000", currentPath, compiler, strings.Join(arguments, "\b")))
+	}
+
+	return
+}
+
+func readResponse(conn net.Conn) (int, error) {
 	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
-		executeLocally(compiler, arguments, "Couldn't read from socket\n")
+		return -1, fmt.Errorf("couldn't read from socket")
 	}
 
 	responseParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
 
 	if len(responseParts) != 3 {
-		executeLocally(compiler, arguments, "Received more than 3 parts in response\n")
+		return -1, fmt.Errorf("received more than 3 parts in response")
 	}
 
 	exitcode, err := strconv.Atoi(responseParts[0])
 	if err != nil {
-		executeLocally(compiler, arguments, err.Error())
+		return -1, err
 	}
 
-	os.Stdout.WriteString(responseParts[1])
-	os.Stderr.WriteString(responseParts[2])
+	_, _ = os.Stdout.WriteString(responseParts[1])
+	_, _ = os.Stderr.WriteString(responseParts[2])
 
-	return exitcode
+	return exitcode, nil
 }

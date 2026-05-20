@@ -23,12 +23,13 @@ type DaemonUnixSockListener struct {
 }
 
 type DaemonSockRequest struct {
-	SessionId uint32
-	Uid      int
-	Gid      int
-	Cwd      string
-	Compiler string
-	CmdLine  []string
+	SessionId     uint32
+	Uid           int
+	Gid           int
+	Cwd           string
+	Compiler      string
+	CmdLine       []string
+	InterruptChan chan struct{}
 }
 
 type DaemonSockResponse struct {
@@ -118,15 +119,17 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 	}
 
 	request := DaemonSockRequest{
-		SessionId: daemon.totalInvocations.Add(1),
-		Uid:      uid,
-		Gid:      gid,
-		Cwd:      reqParts[0],
-		Compiler: reqParts[1],
-		CmdLine:  reqParts[2:],
+		SessionId:     daemon.totalInvocations.Add(1),
+		Uid:           uid,
+		Gid:           gid,
+		Cwd:           reqParts[0],
+		Compiler:      reqParts[1],
+		CmdLine:       reqParts[2:],
+		InterruptChan: make(chan struct{}),
 	}
 
 	listener.activeConnections.Add(1)
+	go waitForInterruption(conn, request.InterruptChan)
 	response := daemon.HandleInvocation(request)
 	listener.activeConnections.Add(-1)
 	listener.lastTimeAlive = time.Now()
@@ -141,6 +144,13 @@ func getConnectedUser(conn net.Conn) (uid int, gid int) {
 	f.Close()
 
 	return int(pcred.Uid), int(pcred.Gid)
+}
+
+func waitForInterruption(conn net.Conn, interruptChan chan struct{}) {
+	_, err := bufio.NewReaderSize(conn, 32).ReadSlice(0)
+	if err != nil {
+		close(interruptChan)
+	}
 }
 
 func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSockResponse) {
