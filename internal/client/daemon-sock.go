@@ -105,16 +105,14 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 
 	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
-		logClient.Error("couldn't read from socket", err)
-		listener.respondErr(conn)
+		listener.respondErr(conn, err)
 		return
 	}
 
 	reqParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
 
 	if len(reqParts) < 3 {
-		logClient.Error("couldn't read from socket", reqParts)
-		listener.respondErr(conn)
+		listener.respondErr(conn, fmt.Errorf("invalid request format"))
 		return
 	}
 
@@ -130,9 +128,14 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 
 	listener.activeConnections.Add(1)
 	go waitForInterruption(conn, request.InterruptChan)
-	response := daemon.HandleInvocation(request)
+	response, err := daemon.HandleInvocation(request)
 	listener.activeConnections.Add(-1)
 	listener.lastTimeAlive = time.Now()
+
+	if err != nil {
+		listener.respondErr(conn, err)
+		return
+	}
 
 	listener.respondOk(conn, response)
 }
@@ -141,7 +144,7 @@ func getConnectedUser(conn net.Conn) (uid int, gid int) {
 	unixConn := conn.(*net.UnixConn)
 	f, _ := unixConn.File()
 	pcred, _ := unix.GetsockoptUcred(int(f.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
-	f.Close()
+	_ = f.Close()
 
 	return int(pcred.Uid), int(pcred.Gid)
 }
@@ -158,7 +161,7 @@ func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSoc
 	_ = conn.Close()
 }
 
-func (listener *DaemonUnixSockListener) respondErr(conn net.Conn) {
-	_, _ = conn.Write([]byte("\000"))
+func (listener *DaemonUnixSockListener) respondErr(conn net.Conn, err error) {
+       _, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%v\000", -1, "", err))
 	_ = conn.Close()
 }

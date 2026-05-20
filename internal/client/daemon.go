@@ -84,8 +84,8 @@ func MakeDaemon(configuration *Configuration) (*Daemon, error) {
 		localCompilerThrottle: make(chan struct{}, configuration.CompilerQueueSize),
 		disableLocalCompiler:  configuration.CompilerQueueSize == 0,
 		activeInvocations:     make(map[uint32]*Invocation, 300),
-		invocationTimeout: time.Duration(configuration.InvocationTimeout) * time.Second,
-		connectionTimeout: time.Duration(configuration.ConnectionTimeout) * time.Second,
+		invocationTimeout:     time.Duration(configuration.InvocationTimeout) * time.Second,
+		connectionTimeout:     time.Duration(configuration.ConnectionTimeout) * time.Second,
 	}
 
 	daemon.ConnectToRemoteHosts()
@@ -157,7 +157,21 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 	daemon.mu.Unlock()
 }
 
-func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) *DaemonSockResponse {
+func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) (*DaemonSockResponse, error) {
+	response, err := daemon.HandleCompilation(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &DaemonSockResponse{
+		ExitCode: response.exitCode,
+		Stdout:   response.stdout,
+		Stderr:   response.stderr,
+	}, nil
+}
+
+func (daemon *Daemon) HandleCompilation(req DaemonSockRequest) (*CompilerLaunchResponse, error) {
 	invocation := CreateInvocation(req)
 	invocation.ParseCmdLineInvocation(req.CmdLine)
 
@@ -184,27 +198,23 @@ func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) *DaemonSockRespons
 		logClient.Info(1, "compiling remotely", invocation.cppInFile)
 		result, err := daemon.invokeForRemoteCompiling(invocation)
 
-		if err != nil || result.ExitCode != 0 {
-			result = daemon.InvokeLocalCompilation(req, err)
-		} else {
-			return result
+		if err == nil && (result.interrupted || result.exitCode == 0) {
+			return result, nil
 		}
 
-		if result.ExitCode == 0 {
+		result, err = daemon.InvokeLocalCompilation(req, err)
+
+		if result.exitCode == 0 {
 			message := fmt.Sprintf("compiling %s remotely on %s failed, but succeeded locally\n", invocation.cppInFile, invocation.summary.remoteHost)
 			logClient.Error(message)
-			result.Stderr = fmt.Appendf(nil, "%s", message)
 		}
 
-		return result
+		return result, err
 	}
 }
 
-func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) *DaemonSockResponse {
-	response := daemon.InvokeLocalCompilation(req, nil)
-	if response.ExitCode != 0 {
-		return response
-	}
+func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) (*CompilerLaunchResponse, error) {
+	response, err := daemon.InvokeLocalCompilation(req, nil)
 	sha256PCH, _ := common.GetFileSHA256(invocation.objOutFile)
 
 	pchinvocation := common.PCHInvocation{
@@ -216,12 +226,12 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 	}
 
 	bytes, _ := json.Marshal(&pchinvocation)
-	invocation.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes)
+	_ = invocation.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes)
 
-	return response
+	return response, err
 }
 
-func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonSockResponse, error) {
+func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*CompilerLaunchResponse, error) {
 	if len(daemon.remoteConnections) == 0 {
 		return nil, fmt.Errorf("no remote hosts set; use NOCC_SERVERS env var to provide servers")
 	}
@@ -238,41 +248,28 @@ func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*DaemonS
 	daemon.activeInvocations[invocation.sessionID] = invocation
 	daemon.mu.Unlock()
 
-	var err error
-	var reply DaemonSockResponse
-	reply.ExitCode, reply.Stdout, reply.Stderr, err = CompileCppRemotely(daemon, remote, invocation)
+	response, err := CompileCppRemotely(daemon, remote, invocation)
 
 	daemon.mu.Lock()
 	delete(daemon.activeInvocations, invocation.sessionID)
 	daemon.mu.Unlock()
 
-	if err != nil { // it's not an error in C++ code, it's a network error or remote failure
-		return nil, err
-	}
-
 	logClient.Info(1, "summary:", invocation.summary.ToLogString(invocation))
 
-	return &reply, nil
+	return response, err
 }
 
-func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) *DaemonSockResponse {
+func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) (*CompilerLaunchResponse, error) {
 	if reason != nil {
-		logClient.Error("compiling locally:", reason)
-	}
-
-	var reply DaemonSockResponse
-	if daemon.disableLocalCompiler {
-		reply.ExitCode = 1
-		reply.Stderr = []byte("fallback to local compiler disabled")
-		return &reply
+		logClient.Error("compiling locally: ", reason)
 	}
 
 	daemon.localCompilerThrottle <- struct{}{}
-	localcompiler := LocalCompilerLaunch{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid}
-	reply.ExitCode, reply.Stdout, reply.Stderr = localcompiler.RunCompilerLocally()
+	compilerLaunchRequest := CompilerLaunchRequest{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid, req.InterruptChan}
+	response, err := compilerLaunchRequest.RunCompilerLocally()
 	<-daemon.localCompilerThrottle
 
-	return &reply
+	return response, err
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {

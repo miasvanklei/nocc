@@ -24,15 +24,22 @@ type IncludedFile struct {
 
 func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 	return &pb.FileMetadata{
-		FileName:         file.fileName,
-		IsSymlink:        file.isSymlink,
-		SymlinkTarget:    file.symlinkTarget,
-		FileSize:         file.fileSize,
-		SHA256_B0_7:      file.fileSHA256.B0_7,
-		SHA256_B8_15:     file.fileSHA256.B8_15,
-		SHA256_B16_23:    file.fileSHA256.B16_23,
-		SHA256_B24_31:    file.fileSHA256.B24_31,
+		FileName:      file.fileName,
+		IsSymlink:     file.isSymlink,
+		SymlinkTarget: file.symlinkTarget,
+		FileSize:      file.fileSize,
+		SHA256_B0_7:   file.fileSHA256.B0_7,
+		SHA256_B8_15:  file.fileSHA256.B8_15,
+		SHA256_B16_23: file.fileSHA256.B16_23,
+		SHA256_B24_31: file.fileSHA256.B24_31,
 	}
+}
+
+type DependentIncludesResponse struct {
+	interrupted   bool
+	requiredFiles []*IncludedFile
+	cppFile       *IncludedFile
+	pchFile       *IncludedFile
 }
 
 // CollectDependentIncludes collects all dependencies for an input .cpp file USING `compiler -M`.
@@ -42,12 +49,12 @@ func (file *IncludedFile) ToPbFileMetadata() *pb.FileMetadata {
 // Since compiler knows nothing about .nocc-pch files, it will output all dependencies regardless of -fpch-preprocess flag.
 // We'll manually add .nocc-pch if found, so the remote is supposed to use it, not its nested dependencies, actually.
 // See https://gcc.gnu.org/onlinedocs/gcc/Preprocessor-Options.html
-func CollectDependentIncludes(invocation *Invocation) (requiredFiles []*IncludedFile, cppFile *IncludedFile, pchFile *IncludedFile, err error) {
+func CollectDependentIncludes(invocation *Invocation) (*DependentIncludesResponse, error) {
 	compilerCmdLine := make([]string, 0, len(invocation.compilerArgs)+4)
 	compilerCmdLine = append(compilerCmdLine, invocation.compilerArgs...)
 	compilerCmdLine = append(compilerCmdLine, "-o", "-", "-M", invocation.cppInFile)
 
-	localLaunch := LocalCompilerLaunch{
+	compilerLaunchRequest := &CompilerLaunchRequest{
 		cwd:      invocation.cwd,
 		compiler: invocation.compilerName,
 		cmdLine:  compilerCmdLine,
@@ -55,27 +62,35 @@ func CollectDependentIncludes(invocation *Invocation) (requiredFiles []*Included
 		gid:      invocation.gid,
 	}
 
-	exitcode, compilerStdout, compilerStderr := localLaunch.RunCompilerLocally()
+	response, err := compilerLaunchRequest.RunCompilerLocally()
+	if err != nil {
+		return nil, err
+	}
 
-	if exitcode != 0 {
-		err = fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, exitcode, string(compilerStderr))
-		return
+	if response.interrupted {
+		return &DependentIncludesResponse{
+			interrupted: true,
+		}, nil
+	}
+
+	if response.exitCode != 0 {
+		return nil, fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, response.exitCode, string(response.stderr))
 	}
 
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
 	// We also need size and sha256 for every dependency: we'll use them to check whether they were already uploaded.
-	hFilesNames := extractIncludesFromCompilerMStdout(invocation.cwd, compilerStdout, invocation.cppInFile)
-	requiredFiles = make([]*IncludedFile, 0, len(hFilesNames))
+	hFilesNames := extractIncludesFromCompilerMStdout(invocation.cwd, response.stdout, invocation.cppInFile)
+	requiredFiles := make([]*IncludedFile, 0, len(hFilesNames))
 
 	for hFileName := range hFilesNames {
-		var requiredHFiles []*IncludedFile
-		requiredHFiles, err = createRequiredIncludeFiles(hFilesNames, hFileName)
+		requiredHFiles, err := createRequiredIncludeFiles(hFilesNames, hFileName)
 		if err != nil {
-			return
+			return nil, err
 		}
 		requiredFiles = append(requiredFiles, requiredHFiles...)
 	}
 
+	var pchFile *IncludedFile
 	for _, requiredFile := range requiredFiles {
 		if pchFile != nil {
 			break
@@ -87,9 +102,16 @@ func CollectDependentIncludes(invocation *Invocation) (requiredFiles []*Included
 		}
 	}
 
-	cppFile, err = createIncludedFileWithBuffer(invocation.cppInFile)
+	cppFile, err := createIncludedFileWithBuffer(invocation.cppInFile)
+	if err != nil {
+		return nil, err
+	}
 
-	return
+	return &DependentIncludesResponse{
+		requiredFiles: requiredFiles,
+		cppFile:       cppFile,
+		pchFile:       pchFile,
+	}, nil
 }
 
 func createRequiredIncludeFiles(hFilesNames map[string]struct{}, hFileName string) (requiredFiles []*IncludedFile, err error) {
@@ -98,7 +120,7 @@ func createRequiredIncludeFiles(hFilesNames map[string]struct{}, hFileName strin
 	requiredFiles = make([]*IncludedFile, 0, 2)
 
 	if symlinkTarget == nil {
-			hfile, err = createIncludedFileWithBuffer(hFileName)
+		hfile, err = createIncludedFileWithBuffer(hFileName)
 		if err != nil {
 			return
 		}
