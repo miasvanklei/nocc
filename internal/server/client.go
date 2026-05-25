@@ -13,16 +13,6 @@ import (
 	"nocc/internal/common"
 )
 
-const (
-	fsFileStateJustCreated = iota
-	fsFileStateUploading
-	fsFileStateUploadError
-	fsFileStateUploaded
-	fsFileStatePchCompiling
-	fsFileStatePchCompiled
-	fsFileStatePchCompileError
-)
-
 // fileInClientDir describes a file on a server file system inside a client working dir.
 // When multiple client nocc processes are launched (the same clientID), they simultaneously start uploading files,
 // which are saved into a folder with relative paths equal to absolute client paths.

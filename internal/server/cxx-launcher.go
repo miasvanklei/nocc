@@ -7,13 +7,29 @@ import (
 	"io"
 	"nocc/internal/common"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 )
 
 type CompilerLauncher struct {
 	serverCompilerThrottle chan struct{}
+}
+
+type CompilerLaunchRequest struct {
+	workingDir    string
+	compilerName  string
+	compileInput  string
+	compileOutput string
+	compilerArgs  []string
+	interruptchan chan struct{}
+}
+
+type CompilerLaunchResponse struct {
+	interrupted bool
+	exitcode    int
+	duration    int32
+	stdout      []byte
+	stderr      []byte
 }
 
 func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, error) {
@@ -26,20 +42,20 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, 
 	}, nil
 }
 
-func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compilerName string, compileInput string, compileOutput string, compilerArgs []string) (int, int32, []byte, []byte) {
+func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRequest) (*CompilerLaunchResponse, error) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
-	command := "chroot"
-	chrootarguments := make([]string, 0, 6+len(compilerArgs))
+	chrootarguments := make([]string, 0, 6+len(request.compilerArgs))
 
-	chrootarguments = append(chrootarguments, workingDir)
-	chrootarguments = append(chrootarguments, compilerName)
-	chrootarguments = append(chrootarguments, compilerArgs...)
-	chrootarguments = append(chrootarguments, "-o", compileOutput, "-c", compileInput)
+	chrootarguments = append(chrootarguments, request.workingDir)
+	chrootarguments = append(chrootarguments, request.compilerName)
+	chrootarguments = append(chrootarguments, request.compilerArgs...)
+	chrootarguments = append(chrootarguments, "-o", request.compileOutput, "-c", request.compileInput)
 	chrootarguments = append(chrootarguments, "-Wno-missing-include-dirs") // This is needed to avoid errors about missing include dirs in the chroot environment
 
-	compilerCommand := exec.Command(command, chrootarguments...)
+	compilerCommand, ctx, cancel := common.CreateCompilerCommand(request.interruptchan, "chroot", chrootarguments)
 	compilerCommand.Stderr = &compilerStderrBuffer
 	compilerCommand.Stdout = &compilerStdoutBuffer
+	defer cancel()
 
 	// This code is blocking until the compiler ends
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
@@ -54,19 +70,31 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(workingDir string, compil
 	compilerStdout := compilerStdoutBuffer.Bytes()
 	compilerStderr := compilerStderrBuffer.Bytes()
 
-	if len(compilerStderr) == 0 && err != nil {
-		compilerStderr = fmt.Appendln(nil, err)
+	if err != nil {
+		logServer.Error(err.Error())
+		return nil, err
+	}
+
+	if ctx.Err() != nil {
+		return &CompilerLaunchResponse{
+			interrupted: true,
+		}, nil
 	}
 
 	if compilerExitCode != 0 {
 		logServer.Error(
 			"The compiler exited with code", compilerExitCode,
-			"\ncmdLine:", compilerName, compilerArgs,
+			"\ncmdLine:", request.compilerName, request.compilerArgs,
 			"\ncompilerStdout:", strings.TrimSpace(string(compilerStdout)),
 			"\ncxxStderr:", strings.TrimSpace(string(compilerStderr)))
 	}
 
-	return compilerExitCode, compilerDuration, compilerStdout, compilerStderr
+	return &CompilerLaunchResponse{
+		exitcode: compilerExitCode,
+		duration: compilerDuration,
+		stdout:   compilerStdout,
+		stderr:   compilerStderr,
+	}, nil
 }
 
 func ParsePchFile(pchFile *fileInClientDir) (pchCompilation *common.PCHInvocation, err error) {

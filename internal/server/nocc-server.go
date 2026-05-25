@@ -35,6 +35,17 @@ type NoccServer struct {
 	ObjFileCache *ObjFileCache
 }
 
+const (
+	fsFileStateJustCreated = iota
+	fsFileStateUploading
+	fsFileStateUploadError
+	fsFileStateUploaded
+	fsFileStatePchCompiling
+	fsFileStatePchCompiled
+	fsFileStatePchCompileError
+	fsFileStatePchCompileInterrupted
+)
+
 func launchCompilerOnServerOnReadySessions(noccServer *NoccServer, client *Client) {
 	for _, session := range client.GetSessionsNotStartedCompilation() {
 		session.StartCompilingObjIfPossible(client, noccServer.CompilerLauncher, noccServer.ObjFileCache)

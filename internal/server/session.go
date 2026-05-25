@@ -39,6 +39,9 @@ type Session struct {
 	compilerStdout   []byte
 	compilerStderr   []byte
 	compilerDuration int32
+	interrupted      bool
+
+	interruptchan chan struct{}
 }
 
 func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*Session, error) {
@@ -48,6 +51,7 @@ func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*S
 		compilerName: in.Compiler,
 		InputFile:    in.InputFile,
 		compilerArgs: in.CompilerArgs,
+		interruptchan: make(chan struct{}),
 	}
 
 	for index, meta := range in.RequiredFiles {
@@ -105,10 +109,12 @@ func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLaun
 	} else if session.pchFile.state.CompareAndSwap(fsFileStateUploaded, fsFileStatePchCompiling) {
 		logServer.Info(1, "compiling pch file", session.pchFile.serverFileName)
 
-		err := session.LaunchPchWhenPossible(client, compilerLauncher, objFileCache)
-		if err == nil {
+		interrupted, err := session.LaunchPchWhenPossible(client, compilerLauncher, objFileCache)
+		if interrupted {
+			session.pchFile.state.Store(fsFileStatePchCompileInterrupted)
+		} else if err == nil {
 			session.pchFile.state.Store(fsFileStatePchCompiled)
-			logServer.Error("pch file compiled", session.pchFile.serverFileName)
+			logServer.Info(1, "pch file compiled", session.pchFile.serverFileName)
 		} else {
 			logServer.Error(err.Error())
 			session.pchFile.state.Store(fsFileStatePchCompileError)
@@ -119,10 +125,14 @@ func (session *Session) StartCompilingPchIfPossible(client *Client, compilerLaun
 		}
 	} else if session.pchFile.state.Load() == fsFileStatePchCompileError {
 		logServer.Error("pch file compilation failed, not continuing")
-		session.compilerStderr = fmt.Appendln(nil, fmt.Errorf("pch file compilation failed, not continuing"))
+		session.compilerStderr = fmt.Appendln(nil, fmt.Errorf("compilation of pch file %s failed, not continuing", session.pchFile.serverFileName))
 		session.compilerExitCode = -1
 		client.PushToClientReadyChannel(session)
+	} else if session.pchFile.state.Load() == fsFileStatePchCompileInterrupted {
+		session.interrupted = true
+		client.PushToClientReadyChannel(session)
 	}
+
 }
 
 // LaunchCompilerWhenPossible launches the compiler on a server managing a waiting queue.
@@ -138,8 +148,33 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 
 	logServer.Info(1, "launch compiler #", "sessionID", session.sessionID, "clientID", client.clientID, session.compilerArgs)
 
-	session.compilerExitCode, session.compilerDuration, session.compilerStdout, session.compilerStderr =
-		compilerLauncher.ExecCompiler(client.workingDir, session.compilerName, session.InputFile, session.OutputFile, session.compilerArgs)
+	request := &CompilerLaunchRequest{
+		workingDir:    client.workingDir,
+		compilerName:  session.compilerName,
+		compileInput:  session.InputFile,
+		compileOutput: session.OutputFile,
+		compilerArgs:  session.compilerArgs,
+		interruptchan: session.interruptchan,
+	}
+
+	response, err := compilerLauncher.ExecCompiler(request)
+	if err != nil {
+		session.compilerExitCode = -1
+		session.compilerStderr = fmt.Appendln(nil, err)
+		client.PushToClientReadyChannel(session)
+		return
+	}
+
+	if response.interrupted {
+		session.interrupted = true
+		client.PushToClientReadyChannel(session)
+		return
+	}
+
+	session.compilerExitCode = response.exitcode
+	session.compilerDuration = response.duration
+	session.compilerStdout = response.stdout
+	session.compilerStderr = response.stderr
 
 	if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
@@ -157,10 +192,10 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 	client.PushToClientReadyChannel(session)
 }
 
-func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) error {
+func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *CompilerLauncher, objFileCache *ObjFileCache) (bool, error) {
 	pchInvocation, err := ParsePchFile(session.pchFile)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var objCacheKey common.SHA256
@@ -169,13 +204,29 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 	objCacheKey.FromLongHexString(pchInvocation.Hash)
 	if pathInObjCache := objFileCache.LookupInCache(objCacheKey); len(pathInObjCache) != 0 {
 		logServer.Info(0, "pch already compiled", clientOutputFile, "sessionID", session.sessionID)
-		return os.Link(pathInObjCache, clientOutputFile)
+		return false, os.Link(pathInObjCache, clientOutputFile)
 	}
 
-	exitCode, _, _, _ := compilerLauncher.ExecCompiler(client.workingDir, pchInvocation.Compiler, pchInvocation.InputFile, pchInvocation.OutputFile, pchInvocation.Args)
+	request := &CompilerLaunchRequest{
+		workingDir:    client.workingDir,
+		compilerName:  pchInvocation.Compiler,
+		compileInput:  pchInvocation.InputFile,
+		compileOutput: clientOutputFile,
+		compilerArgs:  pchInvocation.Args,
+		interruptchan: session.interruptchan,
+	}
 
-	if exitCode != 0 {
-		return fmt.Errorf("failed to compile pch file %s", pchInvocation.InputFile)
+	response, err := compilerLauncher.ExecCompiler(request)
+	if err != nil {
+		return false, err
+	}
+
+	if response.interrupted {
+		return true, nil
+	}
+
+	if response.exitcode != 0 {
+		return false, fmt.Errorf("failed to compile pch file %s", pchInvocation.InputFile)
 	}
 
 	if stat, err := os.Stat(clientOutputFile); err == nil {
@@ -183,5 +234,5 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 		_ = objFileCache.SaveFileToCache(clientOutputFile, fileNameInCacheDir, objCacheKey, stat.Size())
 	}
 
-	return nil
+	return false, nil
 }
