@@ -12,6 +12,7 @@ service CompilationService {
     rpc UploadFileStream(stream UploadFileChunkRequest) returns (stream UploadFileReply) {}
     rpc RecvCompiledObjStream(OpenReceiveStreamRequest) returns (stream RecvCompiledObjChunkReply) {}
     rpc StopClient(StopClientRequest) returns (StopClientReply) {}
+    rpc InterruptSession(InterruptSessionRequest) returns (InterruptSessionResponse) {}
 }
 
 message FileMetadata {
@@ -55,6 +56,14 @@ message StartCompilationSessionReply {
     repeated uint32 FileIndexesToUpload = 1;
 }
 
+message InterruptSessionRequest {
+    string ClientID = 1;
+    uint32 SessionID = 2;
+}
+
+message InterruptSessionResponse {
+}
+
 message UploadFileChunkRequest {
     string ClientID = 1;
     uint32 SessionID = 2;
@@ -77,8 +86,9 @@ message RecvCompiledObjChunkReply {
     bytes CompilerStdout = 3;
     bytes CompilerStderr = 4;
     int32 CompilerDuration = 5;
-    int64 FileSize = 6;
-    bytes ChunkBody = 7;
+    bool Interrupted = 6;
+    int64 FileSize = 7;
+    bytes ChunkBody = 8;
 }
 
 message StopClientRequest {

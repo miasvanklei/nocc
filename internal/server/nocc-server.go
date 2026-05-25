@@ -113,6 +113,24 @@ func (s *NoccServer) StartClient(_ context.Context, in *pb.StartClientRequest) (
 	return &pb.StartClientReply{}, nil
 }
 
+func (s *NoccServer) InterruptSession(_ context.Context, in *pb.InterruptSessionRequest) (*pb.InterruptSessionResponse, error) {
+	client := s.ActiveClients.GetClient(in.ClientID)
+	if client == nil {
+		logServer.Error("unauthenticated client on session interrupt", "clientID", in.ClientID)
+		return &pb.InterruptSessionResponse{}, nil
+	}
+
+	session := client.GetSession(in.SessionID)
+	if session == nil {
+		return &pb.InterruptSessionResponse{}, nil
+	}
+
+	logServer.Info(0, "interrupting session by user request", "clientID", in.ClientID, "sessionID", in.SessionID)
+	close(session.interruptchan)
+
+	return &pb.InterruptSessionResponse{}, nil
+}
+
 // StartCompilationSession is a grpc handler.
 // A client sends this request providing sha256 of a .cpp file name and all its dependencies (.h/.nocc-pch/etc.).
 // A server responds, what dependencies are missing (needed to be uploaded from the client).
