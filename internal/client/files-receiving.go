@@ -106,13 +106,18 @@ func (rc *RemoteConnection) monitorRemoteStreamForObjReceiving(stream pb.Compila
 			continue
 		}
 
+		if firstChunk.Interrupted {
+			invocation.DoneRecvObj(nil, false)
+			continue
+		}
+
 		invocation.compilerExitCode = int(firstChunk.CompilerExitCode)
 		invocation.compilerStdout = firstChunk.CompilerStdout
 		invocation.compilerStderr = firstChunk.CompilerStderr
 		invocation.compilerDuration = firstChunk.CompilerDuration
 		invocation.summary.nBytesReceived += int(firstChunk.FileSize)
 
-		// non-zero exitCode means either a bug in the source code or a compiler errror
+		// non-zero exitCode means either a bug in the source code or a compiler error
 		if firstChunk.CompilerExitCode != 0 {
 			invocation.DoneRecvObj(nil, false)
 			continue
@@ -164,7 +169,7 @@ func receiveObjFileByChunks(stream pb.CompilationService_RecvCompiledObjStreamCl
 
 	switch {
 	case errRecv != nil:
-		return true, errRecv// "true" to recreate recv stream
+		return true, errRecv // "true" to recreate recv stream
 	case errWrite != nil:
 		return false, errWrite // "false" means that the stream is ok, there was just a problem of saving a file
 	default:

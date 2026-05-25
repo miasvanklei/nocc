@@ -41,7 +41,7 @@ type Invocation struct {
 	cppInFile    string            // input file as specified in cmd line (.cpp for compilation, .h for pch generation)
 	objOutFile   string            // output file as specified in cmd line (.o for compilation, .gch/.pch for pch generation)
 	compilerName string            // g++ / clang / etc.
-	cmdLine[]      string          // original cmdline
+	cmdLine      []string          // original cmdline
 	compilerArgs []string          // args like -Wall, -fpch-preprocess, -I{dir} and many more
 	fOptionFiles map[string]string // -frandomize-layout-seed-file={file} and others
 	depsFlags    DepCmdFlags       // -MD -MF file and others, used for .d files generation (not passed to server)
@@ -58,7 +58,8 @@ type Invocation struct {
 	compilerStderr   []byte
 	compilerDuration int32
 
-	summary *InvocationSummary
+	summary       *InvocationSummary
+	interruptChan chan struct{}
 }
 
 func isSourceFileName(fileName string) bool {
@@ -172,7 +173,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				continue
 			}
 		} else if invocation.parseFOption(arg) {
-				continue
+			continue
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
 				invocation.err = fmt.Errorf("unsupported command-line: multiple input source files")
@@ -226,7 +227,7 @@ func (invocation *Invocation) parseResponseFile(key string, arg string) bool {
 	}
 
 	file := common.PathAbs(invocation.cwd, arg[len(key):])
-	invocation.compilerArgs = append(invocation.compilerArgs, key + file)
+	invocation.compilerArgs = append(invocation.compilerArgs, key+file)
 	invocation.fOptionFiles[key] = file
 
 	return true
@@ -318,15 +319,16 @@ func determineLocalCompiling(invocation *Invocation, arg string) {
 
 func CreateInvocation(req DaemonSockRequest) *Invocation {
 	invocation := &Invocation{
-		uid:          req.Uid,
-		gid:          req.Gid,
-		createTime:   time.Now(),
-		sessionID:    req.SessionId,
-		cwd:          req.Cwd,
-		compilerName: req.Compiler,
-		compilerArgs: make([]string, 0, len(req.CmdLine)),
-		fOptionFiles: make(map[string]string, 1),
-		summary:      MakeInvocationSummary(),
+		uid:           req.Uid,
+		gid:           req.Gid,
+		createTime:    time.Now(),
+		sessionID:     req.SessionId,
+		cwd:           req.Cwd,
+		compilerName:  req.Compiler,
+		compilerArgs:  make([]string, 0, len(req.CmdLine)),
+		fOptionFiles:  make(map[string]string, 1),
+		summary:       MakeInvocationSummary(),
+		interruptChan: req.InterruptChan,
 	}
 
 	return invocation

@@ -12,15 +12,15 @@ import (
 )
 
 type StreamContext struct {
-	ctx context.Context
+	ctx        context.Context
 	cancelFunc context.CancelFunc
 }
 
 func CreateStreamContext() *StreamContext {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
-	return &StreamContext {
-		ctx: ctx,
+	return &StreamContext{
+		ctx:        ctx,
 		cancelFunc: cancelFunc,
 	}
 }
@@ -37,11 +37,11 @@ func (streamContext *StreamContext) TryCancelStreamContext() {
 // If a remote is not available on daemon start (on becomes unavailable in the middle),
 // then all invocations that should be sent to that remote are executed locally within a daemon.
 type RemoteConnection struct {
-	chanToUpload   chan fileUploadReq
-	quitDaemonChan chan int
-	reconnectChan  chan struct{}
+	chanToUpload         chan fileUploadReq
+	quitDaemonChan       chan int
+	reconnectChan        chan struct{}
 	receiveStreamContext *StreamContext
-	uploadStreamContext *StreamContext
+	uploadStreamContext  *StreamContext
 
 	socksProxyAddr string
 	remoteHostPort string
@@ -110,7 +110,8 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 	remote.uploadStreamContext.TryCancelStreamContext()
 	remote.grpcClient.Clear()
 
-	reconnect: for {
+reconnect:
+	for {
 		select {
 		case <-remote.quitDaemonChan:
 			return
@@ -138,7 +139,7 @@ func (remote *RemoteConnection) tryReconnectRemote() {
 }
 
 func (remote *RemoteConnection) reconnectRemote(start bool) <-chan time.Time {
-	err  := remote.SetupConnection(start)
+	err := remote.SetupConnection(start)
 	if err == nil {
 		logClient.Error("Reconnected stream")
 		remote.isUnavailable.Store(false)
@@ -192,14 +193,14 @@ func (remote *RemoteConnection) StartCompilationSession(invocation *Invocation, 
 	startSessionReply, err := remote.compilationServiceClient.StartCompilationSession(
 		remote.grpcClient.callContext,
 		&pb.StartCompilationSessionRequest{
-			ClientID:        remote.clientID,
-			SessionID:       invocation.sessionID,
-			InputFile:       invocation.cppInFile,
-			Compiler:        invocation.compilerName,
-			CompilerArgs:    invocation.compilerArgs,
+			ClientID:             remote.clientID,
+			SessionID:            invocation.sessionID,
+			InputFile:            invocation.cppInFile,
+			Compiler:             invocation.compilerName,
+			CompilerArgs:         invocation.compilerArgs,
 			OriginalCompilerArgs: invocation.cmdLine,
-			RequiredFiles:   requiredFiles,
-			RequiredPchFile: requiredPchFile,
+			RequiredFiles:        requiredFiles,
+			RequiredPchFile:      requiredPchFile,
 		})
 
 	if err != nil {
@@ -250,6 +251,23 @@ func (remote *RemoteConnection) VerifyAlive() {
 		logClient.Error("keep alive failed")
 		remote.OnRemoteBecameUnavailable(err)
 	}
+}
+
+func (remote *RemoteConnection) SendInterruptSessionRequest(sessionID uint32) error {
+	if remote.isUnavailable.Load() {
+		return fmt.Errorf("remote %s is unavailable for interrupting session %d", remote.remoteHost, sessionID)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := remote.compilationServiceClient.InterruptSession(ctx, &pb.InterruptSessionRequest{
+		ClientID:  remote.clientID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (remote *RemoteConnection) SendStopClient(ctxSmallTimeout context.Context) {

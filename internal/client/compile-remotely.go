@@ -121,6 +121,11 @@ func (invocation *Invocation) InterruptRemoteCompilation(remote *RemoteConnectio
 	select {
 	case <-waitCh:
 		break
+	case <-invocation.interruptChan:
+		err := remote.SendInterruptSessionRequest(invocation.sessionID)
+		if err != nil {
+			invocation.DoneRecvObj(err, true)
+		}
 	case <-remote.reconnectChan:
 		err := fmt.Errorf("interrupting sessionID %d because of connection loss", invocation.sessionID)
 		invocation.DoneRecvObj(err, true)
