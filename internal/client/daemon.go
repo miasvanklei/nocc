@@ -157,21 +157,17 @@ func (daemon *Daemon) QuitDaemonGracefully(reason string) {
 	daemon.mu.Unlock()
 }
 
-func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) (*DaemonSockResponse, error) {
-	response, err := daemon.HandleCompilation(req)
+func (daemon *Daemon) HandleInvocation(req DaemonSockRequest) DaemonSockResponse {
+	response := daemon.HandleCompilation(req)
 
-	if err != nil {
-		return nil, err
-	}
-
-	return &DaemonSockResponse{
+	return DaemonSockResponse{
 		ExitCode: response.exitCode,
 		Stdout:   response.stdout,
 		Stderr:   response.stderr,
-	}, nil
+	}
 }
 
-func (daemon *Daemon) HandleCompilation(req DaemonSockRequest) (*CompilerLaunchResponse, error) {
+func (daemon *Daemon) HandleCompilation(req DaemonSockRequest) CompilerLaunchResponse {
 	invocation := CreateInvocation(req)
 	invocation.ParseCmdLineInvocation(req.CmdLine)
 
@@ -196,25 +192,25 @@ func (daemon *Daemon) HandleCompilation(req DaemonSockRequest) (*CompilerLaunchR
 
 	case invokedForCompilingCpp:
 		logClient.Info(1, "compiling remotely", invocation.cppInFile)
-		result, err := daemon.invokeForRemoteCompiling(invocation)
+		rresult, err := daemon.invokeForRemoteCompiling(invocation)
 
-		if err == nil && (result.interrupted || result.exitCode == 0) {
-			return result, nil
+		if err == nil && (rresult.interrupted || rresult.exitCode == 0) {
+			return *rresult
 		}
 
-		result, err = daemon.InvokeLocalCompilation(req, err)
+		lresult := daemon.InvokeLocalCompilation(req, err)
 
-		if err == nil && result.exitCode == 0 {
+		if lresult.exitCode == 0 {
 			message := fmt.Sprintf("compiling %s remotely on %s failed, but succeeded locally\n", invocation.cppInFile, invocation.summary.remoteHost)
 			logClient.Error(message)
 		}
 
-		return result, err
+		return lresult
 	}
 }
 
-func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) (*CompilerLaunchResponse, error) {
-	response, err := daemon.InvokeLocalCompilation(req, nil)
+func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *Invocation) CompilerLaunchResponse {
+	response := daemon.InvokeLocalCompilation(req, nil)
 	sha256PCH, _ := common.GetFileSHA256(invocation.objOutFile)
 
 	pchinvocation := common.PCHInvocation{
@@ -228,7 +224,7 @@ func (daemon *Daemon) invokePCHCompilation(req DaemonSockRequest, invocation *In
 	bytes, _ := json.Marshal(&pchinvocation)
 	_ = invocation.WriteFile(common.ReplaceFileExt(invocation.objOutFile, ".nocc-pch"), bytes)
 
-	return response, err
+	return response
 }
 
 func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*CompilerLaunchResponse, error) {
@@ -259,17 +255,17 @@ func (daemon *Daemon) invokeForRemoteCompiling(invocation *Invocation) (*Compile
 	return response, err
 }
 
-func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) (*CompilerLaunchResponse, error) {
+func (daemon *Daemon) InvokeLocalCompilation(req DaemonSockRequest, reason error) CompilerLaunchResponse {
 	if reason != nil {
-		logClient.Error("compiling locally: ", reason)
+		logClient.Error("compiling locally:", reason)
 	}
 
 	daemon.localCompilerThrottle <- struct{}{}
 	compilerLaunchRequest := CompilerLaunchRequest{req.Cwd, req.Compiler, req.CmdLine, req.Uid, req.Gid, req.InterruptChan}
-	response, err := compilerLaunchRequest.RunCompilerLocally()
+	response := compilerLaunchRequest.RunCompilerLocally()
 	<-daemon.localCompilerThrottle
 
-	return response, err
+	return response
 }
 
 func (daemon *Daemon) FindInvocationBySessionID(sessionID uint32) *Invocation {

@@ -45,7 +45,7 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, 
 	}, nil
 }
 
-func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRequest) (*CompilerLaunchResponse, error) {
+func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRequest) CompilerLaunchResponse {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
 	compilerCmd := make([]string, 0, 5+len(request.compilerArgs))
 	compilerCmd = append(compilerCmd, request.compilerArgs...)
@@ -75,7 +75,7 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRe
 	compilerLauncher.serverCompilerThrottle <- struct{}{}
 
 	start := time.Now()
-	err := compilerCommand.Run()
+	compilerCommand.Run()
 	compilerDuration := int32(time.Since(start).Milliseconds())
 
 	<-compilerLauncher.serverCompilerThrottle
@@ -85,12 +85,12 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRe
 	compilerStderr := compilerStderrBuffer.Bytes()
 
 	if ctx.Err() != nil {
-		return &CompilerLaunchResponse{
+		return CompilerLaunchResponse{
 			interrupted: true,
-		}, nil
+		}
 	}
 
-	if err != nil || compilerExitCode != 0 {
+	if compilerExitCode != 0 {
 		logServer.Error(
 			"The compiler exited with code", compilerExitCode,
 			"\ncmdLine:", request.compilerName, request.compilerArgs,
@@ -98,12 +98,12 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRe
 			"\ncxxStderr:", strings.TrimSpace(string(compilerStderr)))
 	}
 
-	return &CompilerLaunchResponse{
+	return CompilerLaunchResponse{
 		exitcode: compilerExitCode,
 		duration: compilerDuration,
 		stdout:   compilerStdout,
 		stderr:   compilerStderr,
-	}, nil
+	}
 }
 
 func ParsePchFile(pchFile *fileInClientDir) (pchCompilation *common.PCHInvocation, err error) {

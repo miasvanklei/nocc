@@ -128,14 +128,9 @@ func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon)
 
 	listener.activeConnections.Add(1)
 	go waitForInterruption(conn, request.InterruptChan)
-	response, err := daemon.HandleInvocation(request)
+	response := daemon.HandleInvocation(request)
 	listener.activeConnections.Add(-1)
 	listener.lastTimeAlive = time.Now()
-
-	if err != nil {
-		listener.respondErr(conn, err)
-		return
-	}
 
 	listener.respondOk(conn, response)
 }
@@ -157,7 +152,7 @@ func waitForInterruption(conn net.Conn, interruptChan chan struct{}) {
 	}
 }
 
-func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp *DaemonSockResponse) {
+func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp DaemonSockResponse) {
 	_, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\000", resp.ExitCode, resp.Stdout, resp.Stderr))
 	_ = conn.Close()
 }

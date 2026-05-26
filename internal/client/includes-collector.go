@@ -62,8 +62,8 @@ func CollectDependentIncludes(invocation *Invocation) (*DependentIncludesRespons
 		gid:      invocation.gid,
 	}
 
-	response, err := compilerLaunchRequest.RunCompilerLocally()
-	if err != nil || response.exitCode != 0 {
+	response := compilerLaunchRequest.RunCompilerLocally()
+	if response.exitCode != 0 {
 		return nil, fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, response.exitCode, string(response.stderr))
 	}
 

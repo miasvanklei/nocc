@@ -158,14 +158,7 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 		interruptchan:    session.interruptchan,
 	}
 
-	response, err := compilerLauncher.ExecCompiler(request)
-	if err != nil {
-		session.compilerExitCode = -1
-		session.compilerStderr = fmt.Appendln(nil, err)
-		client.PushToClientReadyChannel(session)
-		return
-	}
-
+	response := compilerLauncher.ExecCompiler(request)
 	if response.interrupted {
 		session.interrupted = true
 		client.PushToClientReadyChannel(session)
@@ -176,6 +169,11 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 	session.compilerDuration = response.duration
 	session.compilerStdout = response.stdout
 	session.compilerStderr = response.stderr
+
+	if session.compilerExitCode != 0 {
+		client.PushToClientReadyChannel(session)
+		return
+	}
 
 	if session.compilerDuration > 30000 {
 		logServer.Info(0, "compiled very heavy file", "sessionID", session.sessionID, "compilerDuration", session.compilerDuration, session.InputFile)
@@ -218,16 +216,11 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 		interruptchan:    session.interruptchan,
 	}
 
-	response, err := compilerLauncher.ExecCompiler(request)
-	if err != nil {
-		return false, err
-	}
+	response := compilerLauncher.ExecCompiler(request)
 
 	if response.interrupted {
 		return true, nil
-	}
-
-	if response.exitcode != 0 {
+	} else if response.exitcode != 0 {
 		return false, fmt.Errorf("failed to compile pch file %s", pchInvocation.InputFile)
 	}
 

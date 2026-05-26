@@ -30,7 +30,7 @@ type CompilerLaunchResponse struct {
 	stderr      []byte
 }
 
-func (request *CompilerLaunchRequest) RunCompilerLocally() (*CompilerLaunchResponse, error) {
+func (request *CompilerLaunchRequest) RunCompilerLocally() CompilerLaunchResponse {
 	var compilerStdout, compilerStderr bytes.Buffer
 	compilerCommand, ctx, cancel :=
 		common.CreateCompilerCommand(request.compiler, request.cmdLine, func(cancel context.CancelFunc, ctx context.Context) {
@@ -51,19 +51,17 @@ func (request *CompilerLaunchRequest) RunCompilerLocally() (*CompilerLaunchRespo
 		Gid: uint32(request.gid),
 	}
 
-	err := compilerCommand.Run()
+	compilerCommand.Run()
 
 	if ctx.Err() != nil {
-		return &CompilerLaunchResponse{
+		return CompilerLaunchResponse{
 			interrupted: true,
-		}, nil
+		}
 	}
 
-	response := &CompilerLaunchResponse{
+	return CompilerLaunchResponse{
 		exitCode: compilerCommand.ProcessState.ExitCode(),
 		stdout:   compilerStdout.Bytes(),
 		stderr:   compilerStderr.Bytes(),
 	}
-
-	return response, err
 }
