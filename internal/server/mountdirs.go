@@ -3,14 +3,15 @@ package server
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 type MountPaths struct {
 	paths   []string
-	options string
+	flags uintptr
 }
 
 type RoMountPaths struct {
@@ -21,7 +22,7 @@ type RwMountPaths struct {
 }
 
 func makeRoMountPaths(mountDirs ...string) RoMountPaths {
-	mountFolders := makeMountPaths(mountDirs, "ro")
+	mountFolders := makeMountPaths(mountDirs, unix.MS_RDONLY)
 
 	return RoMountPaths{
 		mountFolders,
@@ -29,17 +30,17 @@ func makeRoMountPaths(mountDirs ...string) RoMountPaths {
 }
 
 func makeRwMountPaths(mountDirs ...string) RwMountPaths {
-	mountFolders := makeMountPaths(mountDirs, "rw")
+	mountFolders := makeMountPaths(mountDirs, 0)
 
 	return RwMountPaths{
 		mountFolders,
 	}
 }
 
-func makeMountPaths(mountDirs []string, options string) MountPaths {
+func makeMountPaths(mountDirs []string, flags uintptr) MountPaths {
 	return MountPaths{
 		paths:   mountDirs,
-		options: options,
+		flags: flags,
 	}
 }
 
@@ -55,7 +56,7 @@ func BindmountPaths(workingDir string, mountPaths MountPaths) error {
 			break
 		}
 
-		if err = bindMount(sourcePath, targetPath, mountPaths.options); err != nil {
+		if err = bindMount(sourcePath, targetPath, mountPaths.flags); err != nil {
 			errorMessage = fmt.Sprintf("failed to bind mount %s on %s: %v", sourcePath, targetPath, err)
 			break
 		}
@@ -93,9 +94,10 @@ func createMountDirectory(sourcePath string, targetPath string) error {
 	}
 }
 
-func bindMount(source string, target string, option string) error {
-	cmd := exec.Command("mount", "--bind", "-o", option, source, target)
-	if err := cmd.Run(); err != nil {
+func bindMount(source string, target string, flags uintptr) error {
+	err := unix.Mount(source, target, "bind", unix.MS_BIND | flags, "")
+
+	if err != nil {
 		return fmt.Errorf("failed to bind mount: %w", err)
 	}
 	return nil
@@ -108,8 +110,7 @@ func UnmountPaths(workingDir string, mountPaths MountPaths) {
 func unmountPaths(workingDir string, paths []string) {
 	for _, unmountPath := range paths {
 		targetPath := path.Join(workingDir, unmountPath)
-		cmd := exec.Command("umount", targetPath)
-		err := cmd.Run()
+		err := unix.Unmount(targetPath, 0)
 		if err != nil {
 			logServer.Error("failed to unmount", targetPath, err)
 		}
