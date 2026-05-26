@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -70,12 +69,11 @@ func (client *Client) makeNewFile(clientFileName string, fileSize int64, isSymli
 // MapClientFileNameToServerAbs converts a client file name to an absolute path on server.
 // For example, /proj/1.cpp maps to ${SrcCacheDir}/cpp/clients/{clientID}/proj/1.cpp.
 func (client *Client) MapClientFileNameToServerAbs(clientFileName string) string {
-	return path.Join(client.workingDir, clientFileName)
+	return strings.Join([]string{client.workingDir, clientFileName}, "/")
 }
 
 // MapServerAbsToClientFileName converts an absolute path on server relatively to the client working dir.
 // For example, ${SrcCacheDir}/cpp/clients/{clientID}/proj/1.cpp maps to /proj/1.cpp.
-// If serverFileName is /usr/local/include, it's left as is.
 func (client *Client) MapServerAbsToClientFileName(serverFileName string) string {
 	return strings.TrimPrefix(serverFileName, client.workingDir)
 }
@@ -176,7 +174,7 @@ func (client *Client) MkdirAllForSession(session *Session) {
 
 	client.mu.RLock()
 	for _, file := range session.files {
-		path := filepath.Dir(file.serverFileName)
+		path, _ := filepath.Split(file.serverFileName)
 		if !client.dirs[path] && !dirsToCreate[path] {
 			dirsToCreate[path] = true
 		}

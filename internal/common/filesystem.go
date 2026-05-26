@@ -2,7 +2,7 @@ package common
 
 import (
 	"path"
-	"path/filepath"
+	"strings"
 )
 
 func ReplaceFileExt(fileName string, newExt string) string {
@@ -11,11 +11,8 @@ func ReplaceFileExt(fileName string, newExt string) string {
 }
 
 func PathAbs(cwd string, relPath string) string {
-	var absPath string
 	if relPath[0] == '/' {
-		absPath = relPath
-	} else {
-		absPath = filepath.Join(cwd, relPath)
+		return relPath
 	}
-	return filepath.Clean(absPath)
+	return strings.Join([]string{cwd, relPath}, "/")
 }
