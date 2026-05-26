@@ -8,6 +8,7 @@ import (
 	"nocc/internal/common"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -44,15 +45,16 @@ func MakeCompilerLauncher(maxParallelCompilerProcesses int) (*CompilerLauncher, 
 
 func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRequest) (*CompilerLaunchResponse, error) {
 	var compilerStdoutBuffer, compilerStderrBuffer bytes.Buffer
-	chrootarguments := make([]string, 0, 6+len(request.compilerArgs))
+	compilerCmd := make([]string, 0, 5+len(request.compilerArgs))
+	compilerCmd = append(compilerCmd, request.compilerArgs...)
+	compilerCmd = append(compilerCmd, "-o", request.compileOutput, "-c", request.compileInput)
+	compilerCmd = append(compilerCmd, "-Wno-missing-include-dirs") // This is needed to avoid errors about missing include dirs in the chroot environment
 
-	chrootarguments = append(chrootarguments, request.workingDir)
-	chrootarguments = append(chrootarguments, request.compilerName)
-	chrootarguments = append(chrootarguments, request.compilerArgs...)
-	chrootarguments = append(chrootarguments, "-o", request.compileOutput, "-c", request.compileInput)
-	chrootarguments = append(chrootarguments, "-Wno-missing-include-dirs") // This is needed to avoid errors about missing include dirs in the chroot environment
-
-	compilerCommand, ctx, cancel := common.CreateCompilerCommand(request.interruptchan, "chroot", chrootarguments)
+	compilerCommand, ctx, cancel := common.CreateCompilerCommand(request.interruptchan, request.compilerName, compilerCmd)
+	compilerCommand.SysProcAttr = &syscall.SysProcAttr{
+		Chroot: request.workingDir,
+	}
+	compilerCommand.Dir = "/"
 	compilerCommand.Stderr = &compilerStderrBuffer
 	compilerCommand.Stdout = &compilerStdoutBuffer
 	defer cancel()
