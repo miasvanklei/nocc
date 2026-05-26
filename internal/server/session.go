@@ -23,8 +23,8 @@ import (
 type Session struct {
 	sessionID uint32
 
-	InputFile    string   // as-is from a client cmd line (relative to compilerCwd on a server-side)
-	OutputFile   string   // inside ${ObjCacheDir}/compiler-out, or directly in ${ObjCacheDir}/obj-cache if taken from cache
+	InputFile    string // as-is from a client cmd line (relative to compilerCwd on a server-side)
+	OutputFile   string // inside ${ObjCacheDir}/compiler-out, or directly in ${ObjCacheDir}/obj-cache if taken from cache
 	compilerName string   // g++ / clang / etc.
 	compilerArgs []string // all args for the compiler, including -I/-isystem/-L
 
@@ -46,11 +46,11 @@ type Session struct {
 
 func CreateNewSession(in *pb.StartCompilationSessionRequest, client *Client) (*Session, error) {
 	newSession := &Session{
-		sessionID:    in.SessionID,
-		files:        make([]*fileInClientDir, len(in.RequiredFiles)),
-		compilerName: in.Compiler,
-		InputFile:    in.InputFile,
-		compilerArgs: in.CompilerArgs,
+		sessionID:     in.SessionID,
+		compilerName:  in.Compiler,
+		compilerArgs:  in.CompilerArgs,
+		InputFile:     in.InputFile,
+		files:         make([]*fileInClientDir, len(in.RequiredFiles)),
 		interruptchan: make(chan struct{}),
 	}
 
@@ -150,12 +150,12 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 
 	request := &CompilerLaunchRequest{
 		workingDir:    client.workingDir,
-		compilerName:  session.compilerName,
-		compileInput:  session.InputFile,
-		compileOutput: session.OutputFile,
-		compilerArgs:  session.compilerArgs,
-		interruptchan: session.interruptchan,
 		chanDisconnected: client.chanDisconnected,
+		compilerName:     session.compilerName,
+		compileInput:     session.InputFile,
+		compileOutput:    session.OutputFile,
+		compilerArgs:     session.compilerArgs,
+		interruptchan:    session.interruptchan,
 	}
 
 	response, err := compilerLauncher.ExecCompiler(request)
@@ -210,12 +210,12 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 
 	request := &CompilerLaunchRequest{
 		workingDir:    client.workingDir,
-		compilerName:  pchInvocation.Compiler,
-		compileInput:  pchInvocation.InputFile,
-		compileOutput: clientOutputFile,
-		compilerArgs:  pchInvocation.Args,
-		interruptchan: session.interruptchan,
 		chanDisconnected: client.chanDisconnected,
+		compilerName:     pchInvocation.Compiler,
+		compileInput:     pchInvocation.InputFile,
+		compileOutput:    clientOutputFile,
+		compilerArgs:     pchInvocation.Args,
+		interruptchan:    session.interruptchan,
 	}
 
 	response, err := compilerLauncher.ExecCompiler(request)
