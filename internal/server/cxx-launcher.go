@@ -18,12 +18,12 @@ type CompilerLauncher struct {
 }
 
 type CompilerLaunchRequest struct {
-	workingDir    string
-	compilerName  string
-	compileInput  string
-	compileOutput string
-	compilerArgs  []string
-	interruptchan chan struct{}
+	workingDir       string
+	compilerName     string
+	compileInput     string
+	compileOutput    string
+	compilerArgs     []string
+	interruptchan    chan struct{}
 	chanDisconnected chan struct{}
 }
 
@@ -84,18 +84,13 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRe
 	compilerStdout := compilerStdoutBuffer.Bytes()
 	compilerStderr := compilerStderrBuffer.Bytes()
 
-	if err != nil {
-		logServer.Error(err.Error())
-		return nil, err
-	}
-
 	if ctx.Err() != nil {
 		return &CompilerLaunchResponse{
 			interrupted: true,
 		}, nil
 	}
 
-	if compilerExitCode != 0 {
+	if err != nil || compilerExitCode != 0 {
 		logServer.Error(
 			"The compiler exited with code", compilerExitCode,
 			"\ncmdLine:", request.compilerName, request.compilerArgs,

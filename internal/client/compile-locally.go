@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"nocc/internal/common"
 	"syscall"
 )
@@ -53,10 +52,6 @@ func (request *CompilerLaunchRequest) RunCompilerLocally() (*CompilerLaunchRespo
 	}
 
 	err := compilerCommand.Run()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to run compiler locally: %v", err)
-	}
 
 	if ctx.Err() != nil {
 		return &CompilerLaunchResponse{

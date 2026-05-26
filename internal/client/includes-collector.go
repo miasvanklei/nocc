@@ -63,18 +63,14 @@ func CollectDependentIncludes(invocation *Invocation) (*DependentIncludesRespons
 	}
 
 	response, err := compilerLaunchRequest.RunCompilerLocally()
-	if err != nil {
-		return nil, err
+	if err != nil || response.exitCode != 0 {
+		return nil, fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, response.exitCode, string(response.stderr))
 	}
 
 	if response.interrupted {
 		return &DependentIncludesResponse{
 			interrupted: true,
 		}, nil
-	}
-
-	if response.exitCode != 0 {
-		return nil, fmt.Errorf("%s %s exited with code %d: %s", invocation.compilerName, compilerCmdLine, response.exitCode, string(response.stderr))
 	}
 
 	// -M outputs all dependent file names (we call them ".h files", though the extension is arbitrary).
