@@ -105,6 +105,16 @@ func (client *Client) GetSession(sessionID uint32) *Session {
 	return session
 }
 
+func (client *Client) InterruptSession(sessionID uint32) {
+	client.mu.RLock()
+	session := client.sessions[sessionID]
+	if session != nil {
+		logServer.Info(0, "interrupting session by user request", "clientID", client.clientID, "sessionID", sessionID)
+		close(session.interruptchan)
+	}
+	client.mu.RUnlock()
+}
+
 func (client *Client) GetActiveSessionsCount() int {
 	client.mu.RLock()
 	count := len(client.sessions)

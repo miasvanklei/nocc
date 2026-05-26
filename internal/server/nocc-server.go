@@ -120,13 +120,7 @@ func (s *NoccServer) InterruptSession(_ context.Context, in *pb.InterruptSession
 		return &pb.InterruptSessionResponse{}, nil
 	}
 
-	session := client.GetSession(in.SessionID)
-	if session == nil {
-		return &pb.InterruptSessionResponse{}, nil
-	}
-
-	logServer.Info(0, "interrupting session by user request", "clientID", in.ClientID, "sessionID", in.SessionID)
-	close(session.interruptchan)
+	client.InterruptSession(in.SessionID)
 
 	return &pb.InterruptSessionResponse{}, nil
 }
