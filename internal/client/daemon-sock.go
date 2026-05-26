@@ -151,7 +151,8 @@ func getConnectedUser(conn net.Conn) (uid int, gid int) {
 
 func waitForInterruption(conn net.Conn, interruptChan chan struct{}) {
 	_, err := bufio.NewReaderSize(conn, 32).ReadSlice(0)
-	if err != nil {
+	if err == nil {
+		logClient.Info(2, "got interrupt signal from client, interrupting compilation")
 		close(interruptChan)
 	}
 }
