@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ type CompilerLaunchRequest struct {
 	compileOutput string
 	compilerArgs  []string
 	interruptchan chan struct{}
+	chanDisconnected chan struct{}
 }
 
 type CompilerLaunchResponse struct {
@@ -50,7 +52,17 @@ func (compilerLauncher *CompilerLauncher) ExecCompiler(request *CompilerLaunchRe
 	compilerCmd = append(compilerCmd, "-o", request.compileOutput, "-c", request.compileInput)
 	compilerCmd = append(compilerCmd, "-Wno-missing-include-dirs") // This is needed to avoid errors about missing include dirs in the chroot environment
 
-	compilerCommand, ctx, cancel := common.CreateCompilerCommand(request.interruptchan, request.compilerName, compilerCmd)
+	compilerCommand, ctx, cancel :=
+		common.CreateCompilerCommand(request.compilerName, compilerCmd, func(cancel context.CancelFunc, ctx context.Context) {
+			select {
+			case <-request.interruptchan:
+				cancel()
+			case <-request.chanDisconnected:
+				cancel()
+			case <-ctx.Done():
+			}
+		})
+
 	compilerCommand.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: request.workingDir,
 	}

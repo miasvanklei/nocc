@@ -155,6 +155,7 @@ func (session *Session) LaunchCompilerWhenPossible(client *Client, compilerLaunc
 		compileOutput: session.OutputFile,
 		compilerArgs:  session.compilerArgs,
 		interruptchan: session.interruptchan,
+		chanDisconnected: client.chanDisconnected,
 	}
 
 	response, err := compilerLauncher.ExecCompiler(request)
@@ -214,6 +215,7 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 		compileOutput: clientOutputFile,
 		compilerArgs:  pchInvocation.Args,
 		interruptchan: session.interruptchan,
+		chanDisconnected: client.chanDisconnected,
 	}
 
 	response, err := compilerLauncher.ExecCompiler(request)

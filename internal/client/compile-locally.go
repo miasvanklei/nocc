@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"nocc/internal/common"
 	"syscall"
@@ -32,7 +33,15 @@ type CompilerLaunchResponse struct {
 
 func (request *CompilerLaunchRequest) RunCompilerLocally() (*CompilerLaunchResponse, error) {
 	var compilerStdout, compilerStderr bytes.Buffer
-	compilerCommand, ctx, cancel := common.CreateCompilerCommand(request.interruptChan, request.compiler, request.cmdLine)
+	compilerCommand, ctx, cancel :=
+		common.CreateCompilerCommand(request.compiler, request.cmdLine, func(cancel context.CancelFunc, ctx context.Context) {
+			select {
+			case <-request.interruptChan:
+				cancel()
+			case <-ctx.Done():
+			}
+		})
+
 	defer cancel()
 	compilerCommand.Dir = request.cwd
 	compilerCommand.Stdout = &compilerStdout
@@ -56,9 +65,9 @@ func (request *CompilerLaunchRequest) RunCompilerLocally() (*CompilerLaunchRespo
 	}
 
 	response := &CompilerLaunchResponse{
-		exitCode:    compilerCommand.ProcessState.ExitCode(),
-		stdout:      compilerStdout.Bytes(),
-		stderr:      compilerStderr.Bytes(),
+		exitCode: compilerCommand.ProcessState.ExitCode(),
+		stdout:   compilerStdout.Bytes(),
+		stderr:   compilerStderr.Bytes(),
 	}
 
 	return response, err
