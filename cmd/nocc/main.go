@@ -37,20 +37,24 @@ func realMain() int {
 
 	compiler, args := splitCompilerAndArgs(os.Args)
 	if shouldCompileLocally(args) {
-		if err := executeLocally(compiler, args, nil); err != nil {
+		exitCode, err := executeLocally(compiler, args, nil)
+		if err != nil {
 			return exitOnError(err)
 		}
+		return exitCode
 	}
 
 	conn, err := net.Dial("unix", "/run/nocc-daemon.sock")
-	if err != nil {
-		if err := executeLocally(compiler, args, err); err != nil {
-			return exitOnError(err)
-		}
+	if err == nil {
+		defer conn.Close()
+		return runCompilationInDaemon(ctx, conn, compiler, args)
 	}
-	defer conn.Close()
 
-	return runCompilationInDaemon(ctx, conn, compiler, args)
+	exitCode, err := executeLocally(compiler, args, err)
+	if err != nil {
+		return exitOnError(err)
+	}
+	return exitCode
 }
 
 func runCompilationInDaemon(ctx context.Context, conn net.Conn, compiler string, args []string) int {
@@ -121,14 +125,14 @@ func getCompiler(compiler string) (*string, error) {
 	return nil, err
 }
 
-func executeLocally(compiler string, arguments []string, err error) error {
+func executeLocally(compiler string, arguments []string, err error) (int, error) {
 	if err != nil {
 		_, _ = os.Stderr.WriteString("[nocc] " + err.Error() + "\n")
 	}
 
 	pathCompiler, err := getCompiler(compiler)
 	if err != nil {
-		return err
+		return 1, err
 	}
 
 	var compilerStdout, compilerStderr bytes.Buffer
@@ -141,7 +145,9 @@ func executeLocally(compiler string, arguments []string, err error) error {
 	_, _ = os.Stdout.Write(compilerStdout.Bytes())
 	_, _ = os.Stderr.Write(compilerStderr.Bytes())
 
-	return err
+	exitCode := cmd.ProcessState.ExitCode()
+
+	return exitCode, err
 }
 
 func waitForInterruption(ctx context.Context, conn net.Conn, compilationStatus *atomic.Int32, normalExitchan chan struct{}) {
@@ -167,18 +173,18 @@ func sendRequest(conn net.Conn, compilationStatus *atomic.Int32, currentPath str
 func readResponse(conn net.Conn) (int, error) {
 	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
 	if err != nil {
-		return -1, fmt.Errorf("couldn't read from socket")
+		return 1, fmt.Errorf("couldn't read from socket")
 	}
 
 	responseParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
 
 	if len(responseParts) != 3 {
-		return -1, fmt.Errorf("received more than 3 parts in response")
+		return 1, fmt.Errorf("received more than 3 parts in response")
 	}
 
 	exitcode, err := strconv.Atoi(responseParts[0])
 	if err != nil {
-		return -1, err
+		return 1, err
 	}
 
 	_, _ = os.Stdout.WriteString(responseParts[1])
