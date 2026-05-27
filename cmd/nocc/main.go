@@ -82,8 +82,9 @@ func runCompilationInDaemon(ctx context.Context, conn net.Conn, compiler string,
 // We compile locally under the following conditions:
 // - the user specified "-", or "-E"
 // - the user did not specify or "-c"
+// - the user specified "/dev/null" as an input file
 func shouldCompileLocally(args []string) bool {
-	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-c")
+	return slices.Contains(args, "-") || slices.Contains(args, "-E") || !slices.Contains(args, "-c") || slices.Contains(args, "/dev/null")
 }
 
 func exitOnError(err error) int {
