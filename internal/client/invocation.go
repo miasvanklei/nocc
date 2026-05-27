@@ -156,6 +156,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 			} else if arg == "-MP" {
 				invocation.depsFlags.SetCmdFlagMP()
 				continue
+			} else if invocation.parseFOption(arg) {
+				continue
 			} else if arg == "-M" || arg == "-MM" || arg == "-MG" {
 				// these dep flags are unsupported yet, cmake doesn't use them
 				invocation.err = fmt.Errorf("unsupported option: %s", arg)
@@ -172,7 +174,8 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				}
 				continue
 			}
-		} else if invocation.parseFOption(arg) {
+		} else if invocation.parseResponseFile("@", arg) {
+			// only responsefiles without recursive imports
 			continue
 		} else if isSourceFileName(arg) || isHeaderFileName(arg) {
 			if invocation.cppInFile != "" {
@@ -203,7 +206,7 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 	} else if invocation.cppInFile != "" && invocation.objOutFile != "" {
 		invocation.invokeType = invokedForLinking
 	} else {
-		invocation.err = fmt.Errorf("unsupported command-line: no output file specified")
+		invocation.err = fmt.Errorf("unsupported command-line: no output file specified: %s", invocation.cmdLine)
 	}
 }
 
@@ -238,7 +241,6 @@ func (invocation *Invocation) parseFOption(arg string) bool {
 		"-frandomize-layout-seed-file=",
 		"--warning-suppression-mappings=",
 		"-fsanitize-ignorelist=",
-		"@", // only responsefiles without recursive imports
 	}
 
 	for _, key := range fOptions {
