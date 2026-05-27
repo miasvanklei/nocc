@@ -66,7 +66,13 @@ func isSourceFileName(fileName string) bool {
 	return isCsourceFileName(fileName) ||
 		isCXXSourceFileName(fileName) ||
 		isObjCSourceFileName(fileName) ||
-		isObjCXXSourceFileName(fileName)
+		isObjCXXSourceFileName(fileName) ||
+		isAssemblySourceFileName(fileName)
+}
+
+func isAssemblySourceFileName(fileName string) bool {
+	return strings.HasSuffix(fileName, ".s") ||
+		strings.HasSuffix(fileName, ".S")
 }
 
 func isCsourceFileName(fileName string) bool {
@@ -312,7 +318,8 @@ func determineLocalCompiling(invocation *Invocation, arg string) {
 			strings.Contains(arg, "ffconf.") || // ffmpeg
 			strings.Contains(arg, "cgo-gcc-input") || // go
 			strings.HasPrefix(filepath.Base(arg), "conftest") || // autoconf
-			strings.HasPrefix(arg, "tmp.conftest.") // autoconf
+			strings.HasPrefix(arg, "tmp.conftest.") || // autoconf
+			isAssemblySourceFileName(arg)
 
 	if shouldCompileLocally {
 		invocation.invokeType = invokedForLocalCompiling
