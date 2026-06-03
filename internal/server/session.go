@@ -207,11 +207,11 @@ func (session *Session) LaunchPchWhenPossible(client *Client, compilerLauncher *
 	}
 
 	request := &CompilerLaunchRequest{
-		workingDir:    client.workingDir,
+		workingDir:       client.workingDir,
 		chanDisconnected: client.chanDisconnected,
 		compilerName:     pchInvocation.Compiler,
 		compileInput:     pchInvocation.InputFile,
-		compileOutput:    clientOutputFile,
+		compileOutput:    pchInvocation.OutputFile,
 		compilerArgs:     pchInvocation.Args,
 		interruptchan:    session.interruptchan,
 	}
