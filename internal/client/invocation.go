@@ -125,9 +125,6 @@ func (invocation *Invocation) ParseCmdLineInvocation(cmdLine []string) {
 				invocation.hascOption = true
 				continue
 			} else if parseFileResult := invocation.parseArgFile(cmdLine, "-o", &i); parseFileResult != nil {
-				if parseFileResult.value == "/dev/null" {
-					invocation.invokeType = invokedForLocalCompiling
-				}
 				invocation.objOutFile = common.PathAbs(invocation.cwd, parseFileResult.value)
 				continue
 			} else if args := invocation.parseIncludeArgs(cmdLine, &i); args != nil {
