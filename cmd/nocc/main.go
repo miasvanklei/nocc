@@ -172,12 +172,12 @@ func sendRequest(conn net.Conn, compilationStatus *atomic.Int32, currentPath str
 }
 
 func readResponse(conn net.Conn) (int, error) {
-	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
+	response, err := bufio.NewReaderSize(conn, 128*1024).ReadString(0x00)
 	if err != nil {
-		return 1, fmt.Errorf("couldn't read from socket")
+		return 1, err
 	}
 
-	responseParts := strings.Split(string(slice[0:len(slice)-1]), "\b") // -1 to strip off the trailing '\0'
+	responseParts := strings.Split(string(response[0:len(response)-1]), "\b") // -1 to strip off the trailing '\0'
 
 	if len(responseParts) != 3 {
 		return 1, fmt.Errorf("received more than 3 parts in response")

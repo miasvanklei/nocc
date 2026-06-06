@@ -103,7 +103,7 @@ func (listener *DaemonUnixSockListener) EnterInfiniteLoopUntilQuit(daemon *Daemo
 func (listener *DaemonUnixSockListener) onRequest(conn net.Conn, daemon *Daemon) {
 	uid, gid := getConnectedUser(conn)
 
-	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadSlice(0)
+	slice, err := bufio.NewReaderSize(conn, 128*1024).ReadString(0x00)
 	if err != nil {
 		listener.respondErr(conn, err)
 		return
@@ -153,7 +153,10 @@ func waitForInterruption(conn net.Conn, interruptChan chan struct{}) {
 }
 
 func (listener *DaemonUnixSockListener) respondOk(conn net.Conn, resp DaemonSockResponse) {
-	_, _ = conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\000", resp.ExitCode, resp.Stdout, resp.Stderr))
+	_, err := conn.Write(fmt.Appendf(nil, "%d\b%s\b%s\000", resp.ExitCode, resp.Stdout, resp.Stderr))
+	if err != nil {
+		logClient.Error(err)
+	}
 	_ = conn.Close()
 }
 
